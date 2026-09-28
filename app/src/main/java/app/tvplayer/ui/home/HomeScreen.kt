@@ -273,7 +273,7 @@ private fun TopBar() {
             Icon(Icons.Filled.PlayArrow, null, tint = Color.White, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.width(12.dp))
-        Text("TV Player", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Smart Player", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Clock(big = false)
     }
@@ -518,7 +518,7 @@ private fun LampaGuide(onClose: () -> Unit) {
         Spacer(Modifier.height(28.dp))
         listOf(
             "Откройте в Lampa настройки плеера и выберите внешний плеер Android.",
-            "Запустите фильм или торрент. В списке приложений выберите TV Player и нажмите «Всегда».",
+            "Запустите фильм или торрент. В списке приложений выберите Smart Player и нажмите «Всегда».",
             "Готово: позиция просмотра сама вернётся в Lampa, а серии будут переключаться прямо в плеере.",
         ).forEachIndexed { i, step ->
             Row(Modifier.padding(bottom = 22.dp)) {
