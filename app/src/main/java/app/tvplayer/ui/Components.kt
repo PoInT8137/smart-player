@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -130,6 +131,7 @@ fun TvButton(
     icon: ImageVector? = null,
     value: String? = null,
     background: Color = AppColors.GlassLight,
+    compact: Boolean = false,
 ) {
     TvFocusable(
         onClick = onClick,
@@ -140,17 +142,35 @@ fun TvButton(
     ) { focused ->
         val color = if (focused) AppColors.OnFocused else AppColors.TextPrimary
         Row(
-            modifier = Modifier.padding(start = 20.dp, end = 24.dp, top = 10.dp, bottom = 10.dp),
+            modifier = if (compact) {
+                Modifier.padding(start = 14.dp, end = 18.dp, top = 5.dp, bottom = 5.dp)
+            } else {
+                Modifier.padding(start = 20.dp, end = 24.dp, top = 10.dp, bottom = 10.dp)
+            },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-                Spacer(Modifier.width(12.dp))
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(if (compact) 18.dp else 24.dp))
+                Spacer(Modifier.width(if (compact) 8.dp else 12.dp))
             }
             Column {
-                Text(text, color = color, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(
+                    text,
+                    color = color,
+                    fontSize = if (compact) 13.sp else 16.sp,
+                    lineHeight = if (compact) 16.sp else 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
                 if (value != null) {
-                    Text(value, color = color.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1)
+                    Text(
+                        value,
+                        color = color.copy(alpha = 0.65f),
+                        fontSize = if (compact) 10.sp else 12.sp,
+                        lineHeight = if (compact) 13.sp else 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -159,16 +179,16 @@ fun TvButton(
 
 /** Небольшой «бейдж» с технической информацией: 1080p, HDR10, AC3 5.1... */
 @Composable
-fun InfoBadge(text: String, modifier: Modifier = Modifier, accent: Boolean = false) {
+fun InfoBadge(text: String, modifier: Modifier = Modifier, accent: Boolean = false, small: Boolean = false) {
     Text(
         text = text,
         color = if (accent) AppColors.OnFocused else AppColors.TextPrimary,
-        fontSize = 13.sp,
+        fontSize = if (small) 11.sp else 13.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = modifier
             .background(if (accent) AppColors.Accent else Color.Transparent, RoundedCornerShape(6.dp))
             .border(1.dp, if (accent) AppColors.Accent else AppColors.Stroke, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .padding(horizontal = if (small) 6.dp else 8.dp, vertical = if (small) 1.dp else 3.dp),
     )
 }
 

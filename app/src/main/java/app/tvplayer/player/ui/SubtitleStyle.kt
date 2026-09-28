@@ -9,7 +9,7 @@ import androidx.media3.ui.SubtitleView
 
 /** Отступ субтитров снизу (доля высоты кадра): обычный и когда открыто меню управления. */
 const val SUBTITLE_BOTTOM_NORMAL = 0.07f
-const val SUBTITLE_BOTTOM_ABOVE_CONTROLS = 0.41f
+const val SUBTITLE_BOTTOM_ABOVE_CONTROLS = 0.27f
 
 /**
  * Субтитры «как в кинотеатре»: белый полужирный текст без подложки,

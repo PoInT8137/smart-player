@@ -87,9 +87,9 @@ import app.tvplayer.ui.TvFocusable
 import app.tvplayer.ui.safeRequestFocus
 import kotlinx.coroutines.delay
 
-private const val CONTROLS_TIMEOUT_MS = 5_000L
+private const val CONTROLS_TIMEOUT_MS = 3_500L
 private const val SEEK_COMMIT_DELAY_MS = 700L
-private const val HINT_DURATION_MS = 2_500L
+private const val HINT_DURATION_MS = 2_000L
 private const val FLASH_DURATION_MS = 550L
 private const val DOUBLE_BACK_WINDOW_MS = 2_000L
 private const val NEXT_UP_MS = 20_000L
@@ -393,23 +393,23 @@ fun PlayerScreen(
 
         AnimatedVisibility(
             visible = controlsVisible && !overlayOpen && state.error == null,
-            enter = fadeIn(tween(250)),
-            exit = fadeOut(tween(300)),
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(160)),
         ) {
             Box(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(120.dp)
                         .align(Alignment.TopCenter)
                         .background(Brush.verticalGradient(listOf(Color(0xD9000000), Color.Transparent))),
                 )
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(320.dp)
+                        .height(190.dp)
                         .align(Alignment.BottomCenter)
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF2000000)))),
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000)))),
                 )
 
                 TopInfo(
@@ -418,7 +418,7 @@ fun PlayerScreen(
                         .align(Alignment.TopCenter)
                         .animateEnterExit(
                             enter = slideInVertically(spring(dampingRatio = 0.8f)) { -it / 2 },
-                            exit = slideOutVertically { -it / 2 },
+                            exit = slideOutVertically(tween(160)) { -it / 2 },
                         ),
                 )
 
@@ -436,7 +436,7 @@ fun PlayerScreen(
                         .align(Alignment.BottomCenter)
                         .animateEnterExit(
                             enter = slideInVertically(spring(dampingRatio = 0.8f)) { it / 3 },
-                            exit = slideOutVertically { it / 3 },
+                            exit = slideOutVertically(tween(160)) { it / 3 },
                         ),
                 )
             }
@@ -532,28 +532,28 @@ private fun TopInfo(state: PlayerStateHolder, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 48.dp, vertical = 32.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(horizontal = 40.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = state.title ?: "",
-                color = AppColors.TextPrimary,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.itemCount > 1) {
-                    InfoBadge("Серия ${state.itemIndex + 1} из ${state.itemCount}", accent = true)
-                }
-                mediaBadges(state.tracks).forEach { InfoBadge(it) }
+        Text(
+            text = state.title ?: "",
+            color = AppColors.TextPrimary,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 420.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        // Бейджи в одну строку с названием — экономим высоту
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (state.itemCount > 1) {
+                InfoBadge("${state.itemIndex + 1} из ${state.itemCount}", accent = true, small = true)
             }
+            mediaBadges(state.tracks).forEach { InfoBadge(it, small = true) }
         }
-        Spacer(Modifier.width(24.dp))
-        Clock(remainingMs = state.remainingMs)
+        Spacer(Modifier.weight(1f))
+        Clock(remainingMs = state.remainingMs, big = false)
     }
 }
 
@@ -575,51 +575,62 @@ private fun BottomControls(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 48.dp, end = 48.dp, bottom = 36.dp),
+            .padding(start = 40.dp, end = 40.dp, bottom = 22.dp),
     ) {
-        Timeline(
-            positionMs = shownPosition,
-            bufferedMs = state.bufferedMs,
-            durationMs = state.durationMs,
-            focusRequester = timelineFocus,
-            downTarget = audioFocus,
-            onFocusChange = onTimelineFocusChange,
-            onSeek = { direction, repeat -> onSeekBy(direction * seekStepMs(repeat)) },
-            onToggle = onTogglePlay,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(formatTime(shownPosition), color = AppColors.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.weight(1f))
-            val hintsAlpha by animateFloatAsState(if (timelineFocused) 1f else 0f, label = "hints")
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.alpha(hintsAlpha),
-            ) {
-                KeyHint("OK", if (state.playWhenReady) "пауза" else "смотреть")
-                KeyHint("◀ ▶", "перемотка")
-                KeyHint("▼", "звук и субтитры")
-            }
-            Spacer(Modifier.weight(1f))
+        // Время по бокам шкалы — одна строка вместо двух
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                formatTime(shownPosition),
+                color = AppColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 3.dp),
+            )
+            Timeline(
+                positionMs = shownPosition,
+                bufferedMs = state.bufferedMs,
+                durationMs = state.durationMs,
+                focusRequester = timelineFocus,
+                downTarget = audioFocus,
+                onFocusChange = onTimelineFocusChange,
+                onSeek = { direction, repeat -> onSeekBy(direction * seekStepMs(repeat)) },
+                onToggle = onTogglePlay,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp),
+            )
             Text(
                 text = if (state.durationMs > 0) "−" + formatTime(state.durationMs - shownPosition) else "--:--",
                 color = AppColors.TextSecondary,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 3.dp),
             )
         }
 
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(10.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlayPauseButton(playing = state.playWhenReady, onClick = onTogglePlay)
-            Spacer(Modifier.weight(1f))
-            val chip = Modifier.height(62.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val hintsAlpha by animateFloatAsState(if (timelineFocused) 1f else 0f, label = "hints")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp)
+                    .alpha(hintsAlpha),
+            ) {
+                KeyHint("OK", if (state.playWhenReady) "пауза" else "смотреть")
+                KeyHint("◀ ▶", "перемотка")
+            }
+            val chip = Modifier.height(46.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.itemCount > 1) {
                     TvButton(
                         "Серии",
                         icon = Icons.Filled.VideoLibrary,
                         value = "${state.itemIndex + 1} из ${state.itemCount}",
                         onClick = onOpenEpisodes,
+                        compact = true,
                         modifier = chip,
                     )
                 }
@@ -628,8 +639,9 @@ private fun BottomControls(
                     icon = Icons.Filled.Audiotrack,
                     value = currentAudioSummary(state.tracks),
                     onClick = { onOpenSheet(SheetTab.Audio) },
+                    compact = true,
                     modifier = chip
-                        .widthIn(max = 230.dp)
+                        .widthIn(max = 200.dp)
                         .focusRequester(audioFocus),
                 )
                 TvButton(
@@ -637,13 +649,15 @@ private fun BottomControls(
                     icon = Icons.Filled.Subtitles,
                     value = currentSubtitleSummary(state.tracks),
                     onClick = { onOpenSheet(SheetTab.Subtitles) },
-                    modifier = chip.widthIn(max = 200.dp),
+                    compact = true,
+                    modifier = chip.widthIn(max = 170.dp),
                 )
                 TvButton(
                     "Настройки",
                     icon = Icons.Filled.Tune,
                     value = if (state.speed != 1f) "Скорость ${speedName(state.speed)}" else null,
                     onClick = { onOpenSheet(SheetTab.Picture) },
+                    compact = true,
                     modifier = chip,
                 )
             }
@@ -661,23 +675,23 @@ private fun Timeline(
     onFocusChange: (Boolean) -> Unit,
     onSeek: (direction: Int, repeatCount: Int) -> Unit,
     onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     LaunchedEffect(focused) { onFocusChange(focused) }
 
-    val trackHeight by animateDpAsState(if (focused) 10.dp else 5.dp, spring(dampingRatio = 0.6f), label = "trackH")
+    val trackHeight by animateDpAsState(if (focused) 7.dp else 4.dp, spring(dampingRatio = 0.6f), label = "trackH")
     val thumb by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = 0.5f), label = "thumb")
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val buffered = if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val trackPx = with(LocalDensity.current) { trackHeight.toPx() }
 
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(70.dp)
+        modifier = modifier
+            .height(46.dp)
             .focusRequester(focusRequester)
-            // «Вниз» со шкалы всегда ведёт на «Звук» — как обещает подсказка
+            // «Вниз» со шкалы всегда ведёт на «Звук»
             .focusProperties { down = downTarget }
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
@@ -691,11 +705,11 @@ private fun Timeline(
             .focusable(interactionSource = interaction),
     ) {
         // Подсказка времени над бегунком
-        val tooltipWidth = 96.dp
+        val tooltipWidth = 64.dp
         Text(
             text = formatTime(positionMs),
             color = AppColors.OnFocused,
-            fontSize = 15.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             modifier = Modifier
@@ -703,8 +717,8 @@ private fun Timeline(
                 .offset(x = (maxWidth * fraction - tooltipWidth / 2).coerceIn(0.dp, maxWidth - tooltipWidth))
                 .width(tooltipWidth)
                 .alpha(thumb.coerceIn(0f, 1f))
-                .background(Color.White, RoundedCornerShape(8.dp))
-                .padding(vertical = 4.dp),
+                .background(Color.White, RoundedCornerShape(6.dp))
+                .padding(vertical = 2.dp),
         )
         ProgressTrack(
             fraction = fraction,
@@ -713,7 +727,7 @@ private fun Timeline(
             thumbScale = thumb,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(22.dp)
                 .align(Alignment.BottomStart),
         )
     }
@@ -723,16 +737,16 @@ private fun Timeline(
 private fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
     TvFocusable(
         onClick = onClick,
-        modifier = Modifier.size(64.dp),
+        modifier = Modifier.size(46.dp),
         shape = CircleShape,
-        focusedScale = 1.15f,
+        focusedScale = 1.12f,
         background = AppColors.GlassLight,
     ) { focused ->
         Icon(
             imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
             contentDescription = if (playing) "Пауза" else "Смотреть",
             tint = if (focused) AppColors.OnFocused else AppColors.TextPrimary,
-            modifier = Modifier.size(36.dp),
+            modifier = Modifier.size(26.dp),
         )
     }
 }
