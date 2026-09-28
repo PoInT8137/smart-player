@@ -17,6 +17,8 @@ data class PanelOption(
     val title: String,
     val subtitle: String? = null,
     val selected: Boolean,
+    /** Заголовок группы над пунктом — когда в одной вкладке несколько настроек. */
+    val header: String? = null,
     val onSelect: () -> Unit,
 )
 

@@ -79,6 +79,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.tvplayer.player.PlayerStateHolder
+import app.tvplayer.player.afr.FrameRateMatcher
 import app.tvplayer.ui.AppColors
 import app.tvplayer.ui.Clock
 import app.tvplayer.ui.InfoBadge
@@ -118,6 +119,8 @@ private val KeyEvent.isConfirm: Boolean
 fun PlayerScreen(
     state: PlayerStateHolder,
     initialHint: String?,
+    autoFrameRate: Boolean,
+    onAutoFrameRateChange: (Boolean) -> Unit,
     onExit: () -> Unit,
 ) {
     val player = state.player
@@ -199,6 +202,10 @@ fun PlayerScreen(
             delay(CONTROLS_TIMEOUT_MS)
             controlsVisible = false
         }
+    }
+
+    LaunchedEffect(state.notice) {
+        state.notice?.let { showHint(it.text) }
     }
 
     LaunchedEffect(hintTick) {
@@ -455,9 +462,28 @@ fun PlayerScreen(
                     when (tab) {
                         SheetTab.Audio -> audioOptions(player, state.tracks)
                         SheetTab.Subtitles -> subtitleOptions(player, state.tracks)
-                        SheetTab.Picture -> resizeModes.map { (mode, name) ->
-                            PanelOption(name, selected = resizeMode == mode, onSelect = { resizeMode = mode })
-                        }
+                        SheetTab.Picture -> resizeModes.mapIndexed { i, (mode, name) ->
+                            PanelOption(
+                                name,
+                                selected = resizeMode == mode,
+                                header = "Размер изображения".takeIf { i == 0 },
+                                onSelect = { resizeMode = mode },
+                            )
+                        } + listOf(
+                            PanelOption(
+                                "Под частоту фильма",
+                                subtitle = "Без подёргиваний: 24 кадра — 24 Гц, 25 — 50 Гц",
+                                selected = autoFrameRate,
+                                header = "Частота экрана",
+                                onSelect = { onAutoFrameRateChange(true) },
+                            ),
+                            PanelOption(
+                                "Как в системе",
+                                subtitle = "Не переключать режим телевизора",
+                                selected = !autoFrameRate,
+                                onSelect = { onAutoFrameRateChange(false) },
+                            ),
+                        )
                         SheetTab.Speed -> speedValues.map { v ->
                             PanelOption(speedName(v), selected = state.speed == v, onSelect = { player.setPlaybackSpeed(v) })
                         }
@@ -551,6 +577,9 @@ private fun TopInfo(state: PlayerStateHolder, modifier: Modifier = Modifier) {
                 InfoBadge("${state.itemIndex + 1} из ${state.itemCount}", accent = true, small = true)
             }
             mediaBadges(state.tracks).forEach { InfoBadge(it, small = true) }
+            state.videoFps?.let { fps ->
+                FrameRateMatcher.normalize(fps)?.let { InfoBadge("${FrameRateMatcher.format(it)} fps", small = true) }
+            }
         }
         Spacer(Modifier.weight(1f))
         Clock(remainingMs = state.remainingMs, big = false)

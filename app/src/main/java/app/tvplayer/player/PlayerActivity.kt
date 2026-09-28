@@ -24,6 +24,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import app.tvplayer.data.HistoryEntry
 import app.tvplayer.data.PlaybackHistory
+import app.tvplayer.data.PlayerSettings
+import app.tvplayer.player.afr.AutoFrameRate
+import app.tvplayer.player.afr.FrameRateDetector
+import app.tvplayer.player.afr.FrameRateMatcher
 import app.tvplayer.player.ui.PlayerScreen
 import app.tvplayer.player.ui.formatTime
 import app.tvplayer.ui.TVPlayerTheme
@@ -36,6 +40,9 @@ import app.tvplayer.ui.TVPlayerTheme
 class PlayerActivity : ComponentActivity() {
 
     private lateinit var history: PlaybackHistory
+    private lateinit var settings: PlayerSettings
+    private lateinit var autoFrameRate: AutoFrameRate
+    private var autoFrameRateEnabled by mutableStateOf(true)
     private var player: ExoPlayer? = null
     private var stateHolder by mutableStateOf<PlayerStateHolder?>(null)
     private var startHint: String? = null
@@ -51,6 +58,12 @@ class PlayerActivity : ComponentActivity() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // Предыдущая серия досмотрена — убираем её из «Продолжить просмотр»
+            // Новая серия может иметь другую частоту кадров
+            if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                frameRateDetector.reset()
+                autoFrameRate.onNewItem()
+                stateHolder?.videoFps = null
+            }
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                 val p = player ?: return
                 val previousIndex = p.previousMediaItemIndex
@@ -59,9 +72,19 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    private val frameRateDetector = FrameRateDetector { fps ->
+        stateHolder?.videoFps = fps
+        player?.let { autoFrameRate.onFrameRateDetected(fps, it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         history = PlaybackHistory(this)
+        settings = PlayerSettings(this)
+        autoFrameRateEnabled = settings.autoFrameRate
+        autoFrameRate = AutoFrameRate(this) { hz ->
+            stateHolder?.postNotice("Частота экрана: ${FrameRateMatcher.format(hz)} Гц — под фильм")
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
 
@@ -69,7 +92,13 @@ class PlayerActivity : ComponentActivity() {
             TVPlayerTheme {
                 stateHolder?.let { holder ->
                     key(holder) {
-                        PlayerScreen(state = holder, initialHint = startHint, onExit = ::finishWithResult)
+                        PlayerScreen(
+                            state = holder,
+                            initialHint = startHint,
+                            autoFrameRate = autoFrameRateEnabled,
+                            onAutoFrameRateChange = ::setAutoFrameRate,
+                            onExit = ::finishWithResult,
+                        )
                     }
                 }
             }
@@ -92,6 +121,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        autoFrameRate.restore()
         releasePlayer()
         super.onDestroy()
     }
@@ -105,6 +135,9 @@ class PlayerActivity : ComponentActivity() {
 
         releasePlayer()
         completed = false
+        frameRateDetector.reset()
+        autoFrameRate.onNewItem()
+        autoFrameRate.setEnabled(autoFrameRateEnabled, null)
 
         val items = request.items.mapIndexed { index, entry ->
             buildMediaItem(entry, if (index == request.startIndex) request.subtitles else emptyList())
@@ -119,6 +152,8 @@ class PlayerActivity : ComponentActivity() {
 
         val newPlayer = PlayerFactory.create(this, request.headers).apply {
             addListener(playerListener)
+            setVideoFrameMetadataListener(frameRateDetector)
+            applyFrameRateStrategy()
             setMediaItems(items, request.startIndex, startPosition)
             prepare()
             playWhenReady = true
@@ -126,6 +161,27 @@ class PlayerActivity : ComponentActivity() {
         player = newPlayer
         stateHolder = PlayerStateHolder(newPlayer)
         return true
+    }
+
+    private fun setAutoFrameRate(enabled: Boolean) {
+        autoFrameRateEnabled = enabled
+        settings.autoFrameRate = enabled
+        player?.let {
+            it.applyFrameRateStrategy()
+            autoFrameRate.setEnabled(enabled, it)
+        }
+    }
+
+    /**
+     * Когда AFR включён, режим экрана выбираем сами; встроенную «бесшовную» смену
+     * частоты ExoPlayer отключаем, чтобы они не спорили друг с другом.
+     */
+    private fun ExoPlayer.applyFrameRateStrategy() {
+        videoChangeFrameRateStrategy = if (autoFrameRateEnabled) {
+            C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
+        } else {
+            C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS
+        }
     }
 
     private fun buildMediaItem(entry: MediaEntry, subtitles: List<SubtitleSource>): MediaItem =
@@ -179,6 +235,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun finishWithResult() {
         if (isFinishing) return
+        autoFrameRate.restore()
         val p = player
         val duration = p?.duration?.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
         val position = if (completed) duration else p?.currentPosition ?: 0L
@@ -203,6 +260,7 @@ class PlayerActivity : ComponentActivity() {
         stateHolder = null
         player?.run {
             removeListener(playerListener)
+            clearVideoFrameMetadataListener(frameRateDetector)
             release()
         }
         player = null

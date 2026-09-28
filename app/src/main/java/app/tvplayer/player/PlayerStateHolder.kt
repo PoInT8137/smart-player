@@ -41,6 +41,18 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
     var error by mutableStateOf<PlaybackException?>(null)
         private set
 
+    /** Частота кадров видео (измеренная или из контейнера). */
+    var videoFps by mutableStateOf<Float?>(null)
+
+    /** Сообщение от активити для всплывающей подсказки (id — чтобы повторы тоже показывались). */
+    var notice by mutableStateOf<Notice?>(null)
+        private set
+    private var noticeId = 0
+
+    fun postNotice(text: String) {
+        notice = Notice(++noticeId, text)
+    }
+
     val itemCount: Int get() = itemTitles.size.coerceAtLeast(1)
     val isBuffering: Boolean get() = playbackState == Player.STATE_BUFFERING
     val hasNext: Boolean get() = itemIndex < itemCount - 1
@@ -88,3 +100,5 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
         player.removeListener(this)
     }
 }
+
+data class Notice(val id: Int, val text: String)

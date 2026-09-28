@@ -178,6 +178,16 @@ private fun OptionList(
         contentPadding = PaddingValues(bottom = 40.dp, top = 4.dp, start = 4.dp, end = 4.dp),
     ) {
         itemsIndexed(options) { index, option ->
+            option.header?.let {
+                Text(
+                    it.uppercase(),
+                    color = AppColors.TextMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.padding(start = 18.dp, top = if (index == 0) 0.dp else 18.dp, bottom = 6.dp),
+                )
+            }
             TvFocusable(
                 onClick = {
                     option.onSelect()
