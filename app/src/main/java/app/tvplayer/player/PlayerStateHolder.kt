@@ -34,16 +34,19 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
         private set
     var itemIndex by mutableIntStateOf(0)
         private set
-    var itemCount by mutableIntStateOf(1)
+    var itemTitles by mutableStateOf<List<String>>(emptyList())
         private set
     var speed by mutableFloatStateOf(1f)
         private set
     var error by mutableStateOf<PlaybackException?>(null)
         private set
 
+    val itemCount: Int get() = itemTitles.size.coerceAtLeast(1)
     val isBuffering: Boolean get() = playbackState == Player.STATE_BUFFERING
     val hasNext: Boolean get() = itemIndex < itemCount - 1
     val hasPrevious: Boolean get() = itemIndex > 0
+    val nextTitle: String? get() = itemTitles.getOrNull(itemIndex + 1)
+    val remainingMs: Long get() = if (durationMs > 0) ((durationMs - positionMs) / speed).toLong() else 0L
 
     init {
         player.addListener(this)
@@ -73,7 +76,10 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
         tracks = player.currentTracks
         title = player.mediaMetadata.title?.toString()
         itemIndex = player.currentMediaItemIndex
-        itemCount = player.mediaItemCount.coerceAtLeast(1)
+        val titles = List(player.mediaItemCount) { i ->
+            player.getMediaItemAt(i).mediaMetadata.title?.toString() ?: "Файл ${i + 1}"
+        }
+        if (titles != itemTitles) itemTitles = titles
         speed = player.playbackParameters.speed
         updateProgress()
     }

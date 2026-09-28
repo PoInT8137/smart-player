@@ -86,10 +86,62 @@ fun subtitleOptions(player: Player, tracks: Tracks): List<PanelOption> {
     return listOf(off) + options
 }
 
+private fun selectedFormat(tracks: Tracks, type: Int): Format? =
+    tracks.groups.filter { it.type == type }.firstNotNullOfOrNull { group ->
+        (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) }
+    }
+
+/** Короткое описание текущей звуковой дорожки: «Русский · AC3 5.1». */
+fun currentAudioSummary(tracks: Tracks): String? = selectedFormat(tracks, C.TRACK_TYPE_AUDIO)?.let { f ->
+    listOfNotNull(languageName(f.language), codecName(f), channelsName(f.channelCount)).joinToString(" · ")
+}
+
+/** Короткое описание текущих субтитров или «Выкл». */
+fun currentSubtitleSummary(tracks: Tracks): String =
+    selectedFormat(tracks, C.TRACK_TYPE_TEXT)?.let { trackTitle(it, "Вкл") } ?: "Выкл"
+
+/** Бейджи для верхней панели: разрешение, кодек, HDR, звук. */
+@OptIn(UnstableApi::class)
+fun mediaBadges(tracks: Tracks): List<String> {
+    val badges = mutableListOf<String>()
+    selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let { v ->
+        val h = minOf(v.height, v.width).takeIf { it > 0 }
+        val w = maxOf(v.height, v.width)
+        when {
+            w >= 3800 -> badges += "4K"
+            h != null && h >= 1000 || w >= 1900 -> badges += "1080p"
+            h != null && h >= 700 || w >= 1260 -> badges += "720p"
+            h != null -> badges += "${h}p"
+        }
+        when (v.sampleMimeType) {
+            MimeTypes.VIDEO_H265 -> badges += "HEVC"
+            MimeTypes.VIDEO_H264 -> badges += "H.264"
+            MimeTypes.VIDEO_AV1 -> badges += "AV1"
+            MimeTypes.VIDEO_VP9 -> badges += "VP9"
+            MimeTypes.VIDEO_DOLBY_VISION -> badges += "Dolby Vision"
+        }
+        when (v.colorInfo?.colorTransfer) {
+            C.COLOR_TRANSFER_ST2084 -> badges += "HDR10"
+            C.COLOR_TRANSFER_HLG -> badges += "HLG"
+        }
+    }
+    selectedFormat(tracks, C.TRACK_TYPE_AUDIO)?.let { a ->
+        listOfNotNull(codecName(a), channelsName(a.channelCount)).joinToString(" ").takeIf { it.isNotBlank() }
+            ?.let { badges += it }
+    }
+    return badges
+}
+
+private fun languageName(code: String?): String? = code
+    ?.takeUnless { it == C.LANGUAGE_UNDETERMINED || it == "und" }
+    ?.let { Locale.forLanguageTag(it).getDisplayLanguage(ruLocale) }
+    ?.takeIf { it.isNotBlank() }
+    ?.replaceFirstChar { it.titlecase(ruLocale) }
+
 val speedValues = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
 fun speedName(speed: Float): String =
-    if (speed == 1f) "Обычная" else "×" + speed.toString().removeSuffix(".0")
+    if (speed == 1f) "Обычная" else speed.toString().removeSuffix(".0") + "×"
 
 @OptIn(UnstableApi::class)
 val resizeModes = listOf(
@@ -99,11 +151,7 @@ val resizeModes = listOf(
 )
 
 private fun trackTitle(format: Format, fallback: String): String {
-    val language = format.language
-        ?.takeUnless { it == C.LANGUAGE_UNDETERMINED || it == "und" }
-        ?.let { Locale.forLanguageTag(it).getDisplayLanguage(ruLocale) }
-        ?.takeIf { it.isNotBlank() }
-        ?.replaceFirstChar { it.titlecase(ruLocale) }
+    val language = languageName(format.language)
     val label = format.label?.takeIf { it.isNotBlank() }
     return when {
         language != null && label != null && !label.contains(language, ignoreCase = true) -> "$language — $label"

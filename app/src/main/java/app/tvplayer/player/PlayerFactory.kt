@@ -13,7 +13,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import app.tvplayer.BuildConfig
 
 @OptIn(UnstableApi::class)
 object PlayerFactory {
@@ -78,5 +80,9 @@ object PlayerFactory {
             .setSeekBackIncrementMs(SEEK_STEP_MS)
             .setSeekForwardIncrementMs(SEEK_STEP_MS)
             .build()
+            .also {
+                // В отладке пишем в logcat выбранные декодеры, форматы и ошибки (тег EventLogger)
+                if (BuildConfig.DEBUG) it.addAnalyticsListener(EventLogger())
+            }
     }
 }
