@@ -16,6 +16,13 @@ Lampa торренты не качает сама: она отдаёт magnet в
 - возвращать позицию и длительность обратно (`setResult`), чтобы Lampa
   отмечала прогресс и «просмотрено».
 
+## Целевое устройство
+
+- **Xiaomi TV Box S (3rd gen)** — Google TV, Amlogic, 4K / HDR10+ / Dolby Vision / AV1.
+  Плеер ставится и тестируется здесь.
+- Телевизор Samsung QE75QN90F (Tizen) — только экран. HDMI от приставки:
+  важно корректно отдавать HDR и passthrough звука (Dolby/DTS) через HDMI.
+
 ## Технологии
 
 | Что | Выбор | Почему |
@@ -80,7 +87,15 @@ app/src/main/java/app/tvplayer/
 
 ## Сборка
 
-1. Установить Android Studio (в комплекте JDK 21 и Android SDK).
-2. Открыть эту папку как проект, дождаться синхронизации Gradle.
-3. Включить на TV «Отладку по сети» / ADB и подключиться: `adb connect <ip-телевизора>`.
-4. Run ▶ — приложение появится в списке приложений TV.
+Окружение: JDK 17 (`~/.jdks/jdk-17.0.20.1+1`), Android SDK (`%LOCALAPPDATA%\Android\Sdk`).
+Путь проекта содержит кириллицу, поэтому в `gradle.properties` стоит `android.overridePathCheck=true`.
+
+```
+set JAVA_HOME=%USERPROFILE%\.jdks\jdk-17.0.20.1+1
+gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
+gradlew assembleRelease      # ужатый APK (~8 МБ), подписан debug-ключом
+adb connect <ip-приставки>
+gradlew installDebug
+```
+
+Проект также открывается в Android Studio как есть.
