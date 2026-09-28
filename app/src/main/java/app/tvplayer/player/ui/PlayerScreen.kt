@@ -307,11 +307,17 @@ fun PlayerScreen(
                     // Фокусом управляет Compose, PlayerView не должен его перехватывать
                     isFocusable = false
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                    subtitleView?.setApplyEmbeddedStyles(true)
+                    subtitleView?.applyCinemaStyle()
                     this.player = player
                 }
             },
-            update = { it.resizeMode = resizeMode },
+            update = {
+                it.resizeMode = resizeMode
+                // Когда открыто меню, поднимаем субтитры над ним, чтобы их не закрывали кнопки
+                it.subtitleView?.setBottomPaddingFraction(
+                    if (controlsVisible && !overlayOpen) SUBTITLE_BOTTOM_ABOVE_CONTROLS else SUBTITLE_BOTTOM_NORMAL
+                )
+            },
             onRelease = { it.player = null },
         )
 
