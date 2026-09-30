@@ -10,3 +10,4 @@
 .cxx/
 .kotlin/
 *.hprof
+/dist/
