@@ -21,6 +21,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +39,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,9 +49,13 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,8 +63,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -67,6 +79,9 @@ import androidx.compose.ui.unit.sp
 import app.tvplayer.data.HistoryEntry
 import app.tvplayer.demo.DemoItem
 import app.tvplayer.player.ui.formatTime
+import app.tvplayer.torrserver.TorrentFile
+import app.tvplayer.torrserver.TorrentInfo
+import app.tvplayer.torrserver.formatSize
 import app.tvplayer.ui.AppColors
 import app.tvplayer.ui.CardArt
 import app.tvplayer.ui.Clock
@@ -76,6 +91,7 @@ import app.tvplayer.ui.fadingTopEdge
 import app.tvplayer.ui.paletteFor
 import app.tvplayer.ui.safeRequestFocus
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Что показывает большой блок сверху — описание элемента в фокусе. */
 private data class Hero(
@@ -84,6 +100,7 @@ private data class Hero(
     val meta: String?,
     val description: String?,
     val seed: String?,
+    val poster: String? = null,
 )
 
 private val WelcomeHero = Hero(
@@ -94,6 +111,7 @@ private val WelcomeHero = Hero(
     seed = null,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     continueWatching: List<HistoryEntry>,
@@ -104,9 +122,15 @@ fun HomeScreen(
     onRemoveHistory: (HistoryEntry) -> Unit,
     onPlayDemo: (DemoItem) -> Unit,
     onOpenFile: () -> Unit,
+    torrServer: TorrServerState,
+    loadTorrent: suspend (String) -> TorrentInfo,
+    onPlayTorrentFile: (TorrentInfo, TorrentFile) -> Unit,
+    onRetryTorrServer: () -> Unit,
 ) {
     var hero by remember { mutableStateOf(WelcomeHero) }
     var guideOpen by remember { mutableStateOf(false) }
+    var openTorrent by remember { mutableStateOf<TorrentInfo?>(null) }
+    val shelfListState = rememberLazyListState()
     val firstFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -120,125 +144,239 @@ fun HomeScreen(
         }
     }
     BackHandler(enabled = guideOpen) { guideOpen = false }
+    BackHandler(enabled = openTorrent != null) { openTorrent = null }
 
-    Box(Modifier.fillMaxSize()) {
-        AmbientBackground(hero.seed)
+    // Вертикальную прокрутку полок ведём сами (полка с фокусом — к верху), встроенную отключаем,
+    // иначе они спорят и список останавливается «между» полками. В рядах — обычное поведение.
+    val rowBringIntoView = LocalBringIntoViewSpec.current
+    CompositionLocalProvider(
+        LocalShelfListState provides shelfListState,
+        LocalRowBringIntoViewSpec provides rowBringIntoView,
+        LocalBringIntoViewSpec provides NoBringIntoView,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            AmbientBackground(hero.seed)
 
-        Column(Modifier.fillMaxSize()) {
-            TopBar()
+            Column(Modifier.fillMaxSize()) {
+                TopBar()
 
-            AnimatedContent(
-                targetState = hero,
-                transitionSpec = {
-                    (fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 10 }) togetherWith fadeOut(tween(200))
-                },
-                label = "hero",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(190.dp)
-                    .padding(horizontal = 56.dp),
-            ) { h -> HeroBlock(h) }
+                AnimatedContent(
+                    targetState = hero,
+                    transitionSpec = {
+                        (fadeIn(tween(350)) + slideInVertically(tween(350)) { it / 10 }) togetherWith fadeOut(tween(200))
+                    },
+                    label = "hero",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .padding(horizontal = 56.dp),
+                ) { h -> HeroBlock(h) }
 
-            LazyColumn(
-                modifier = Modifier.fadingTopEdge(36.dp),
-                contentPadding = PaddingValues(bottom = 48.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                var shelfIndex = 0
-                var firstAssigned = false
-                fun takeFirst(): Boolean = if (!firstAssigned) {
-                    firstAssigned = true
-                    true
-                } else {
-                    false
-                }
-
-                if (continueWatching.isNotEmpty()) {
-                    val index = shelfIndex++
-                    val withFirst = takeFirst()
-                    item(key = "continue") {
-                        Shelf("Продолжить просмотр", index) {
-                            itemsIndexed(continueWatching, key = { _, e -> e.uri }) { i, entry ->
-                                HistoryCard(
-                                    entry = entry,
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .then(if (withFirst && i == 0) Modifier.focusRequester(firstFocus) else Modifier),
-                                    onFocused = { hero = entry.toHero() },
-                                    onClick = { onPlayHistory(entry) },
-                                    onLongClick = { onRemoveHistory(entry) },
-                                )
-                            }
-                        }
+                LazyColumn(
+                    state = shelfListState,
+                    modifier = Modifier.fadingTopEdge(64.dp),
+                    // Запас снизу, чтобы даже последняя полка могла подняться к верху списка
+                    contentPadding = PaddingValues(bottom = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    var shelfIndex = 0
+                    var firstAssigned = false
+                    fun takeFirst(): Boolean = if (!firstAssigned) {
+                        firstAssigned = true
+                        true
+                    } else {
+                        false
                     }
-                }
 
-                if (demos.isNotEmpty()) {
-                    val index = shelfIndex++
-                    val withFirst = takeFirst()
-                    item(key = "demo") {
-                        Shelf("Демо: как из Lampa", index) {
-                            itemsIndexed(demos, key = { _, d -> d.title }) { i, demo ->
-                                DemoCard(
-                                    demo = demo,
-                                    modifier = if (withFirst && i == 0) Modifier.focusRequester(firstFocus) else Modifier,
-                                    onFocused = {
-                                        hero = Hero("ДЕМО", demo.title, demo.subtitle, demo.description, demo.title)
-                                    },
-                                    onClick = { onPlayDemo(demo) },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                val index = shelfIndex
-                val withFirst = takeFirst()
-                item(key = "actions") {
-                    Shelf("Меню", index) {
-                        item {
-                            ActionTile(
-                                icon = Icons.Filled.FolderOpen,
-                                title = "Открыть файл",
-                                modifier = if (withFirst) Modifier.focusRequester(firstFocus) else Modifier,
-                                onFocused = {
-                                    hero = Hero("ФАЙЛЫ", "Открыть файл", null, "Видео с флешки или из памяти приставки.", null)
-                                },
-                                onClick = onOpenFile,
-                            )
-                        }
-                        item {
-                            ActionTile(
-                                icon = Icons.Filled.Link,
-                                title = "Подключить Lampa",
-                                onFocused = {
-                                    hero = Hero(
-                                        "LAMPA",
-                                        "Подключить Lampa",
-                                        null,
-                                        "Три шага, чтобы фильмы и торренты из Lampa открывались в этом плеере.",
-                                        null,
+                    if (continueWatching.isNotEmpty()) {
+                        val index = shelfIndex++
+                        val withFirst = takeFirst()
+                        item(key = "continue") {
+                            Shelf("Продолжить просмотр", index) {
+                                itemsIndexed(continueWatching, key = { _, e -> e.uri }) { i, entry ->
+                                    HistoryCard(
+                                        entry = entry,
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .then(if (withFirst && i == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                            .firstInShelf(i),
+                                        onFocused = { hero = entry.toHero() },
+                                        onClick = { onPlayHistory(entry) },
+                                        onLongClick = { onRemoveHistory(entry) },
                                     )
-                                },
-                                onClick = { guideOpen = true },
-                            )
+                                }
+                            }
+                        }
+                    }
+
+                    val torrents = (torrServer as? TorrServerState.Ready)?.torrents.orEmpty()
+                    if (torrents.isNotEmpty()) {
+                        val index = shelfIndex++
+                        val withFirst = takeFirst()
+                        item(key = "torrserver") {
+                            Shelf("TorrServer", index) {
+                                itemsIndexed(torrents, key = { _, t -> t.hash }) { i, torrent ->
+                                    TorrentCard(
+                                        torrent = torrent,
+                                        modifier = (if (withFirst && i == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                            .firstInShelf(i),
+                                        onFocused = {
+                                            hero = Hero(
+                                                tag = "TORRSERVER",
+                                                title = torrent.title,
+                                                meta = "${formatSize(torrent.size)} · ${torrent.statusRu()}",
+                                                description = "Нажмите OK, чтобы выбрать файл или серию.",
+                                                seed = torrent.title,
+                                                poster = torrent.poster,
+                                            )
+                                        },
+                                        onClick = { openTorrent = torrent },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (demos.isNotEmpty()) {
+                        val index = shelfIndex++
+                        val withFirst = takeFirst()
+                        item(key = "demo") {
+                            Shelf("Демо: как из Lampa", index) {
+                                itemsIndexed(demos, key = { _, d -> d.title }) { i, demo ->
+                                    DemoCard(
+                                        demo = demo,
+                                        modifier = (if (withFirst && i == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                            .firstInShelf(i),
+                                        onFocused = {
+                                            hero = Hero("ДЕМО", demo.title, demo.subtitle, demo.description, demo.title)
+                                        },
+                                        onClick = { onPlayDemo(demo) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val index = shelfIndex
+                    val withFirst = takeFirst()
+                    item(key = "actions") {
+                        Shelf("Меню", index) {
+                            item {
+                                ActionTile(
+                                    icon = Icons.Filled.FolderOpen,
+                                    title = "Открыть файл",
+                                    modifier = (if (withFirst) Modifier.focusRequester(firstFocus) else Modifier).firstInShelf(0),
+                                    onFocused = {
+                                        hero = Hero("ФАЙЛЫ", "Открыть файл", null, "Видео с флешки или из памяти приставки.", null)
+                                    },
+                                    onClick = onOpenFile,
+                                )
+                            }
+                            if (torrServer is TorrServerState.Unavailable) {
+                                item {
+                                    ActionTile(
+                                        icon = Icons.Filled.Refresh,
+                                        title = "TorrServer",
+                                        onFocused = {
+                                            hero = Hero(
+                                                "TORRSERVER",
+                                                "TorrServer не найден",
+                                                torrServer.url,
+                                                "Запустите TorrServer на приставке и нажмите OK, чтобы проверить снова.",
+                                                null,
+                                            )
+                                        },
+                                        onClick = onRetryTorrServer,
+                                    )
+                                }
+                            }
+                            item {
+                                ActionTile(
+                                    icon = Icons.Filled.Link,
+                                    title = "Подключить Lampa",
+                                    onFocused = {
+                                        hero = Hero(
+                                            "LAMPA",
+                                            "Подключить Lampa",
+                                            null,
+                                            "Три шага, чтобы фильмы и торренты из Lampa открывались в этом плеере.",
+                                            null,
+                                        )
+                                    },
+                                    onClick = { guideOpen = true },
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        ResultBanner(resultMessage, Modifier.align(Alignment.BottomCenter))
+            ResultBanner(resultMessage, Modifier.align(Alignment.BottomCenter))
 
-        AnimatedVisibility(
-            visible = guideOpen,
-            enter = slideInHorizontally(spring(dampingRatio = 0.85f)) { it } + fadeIn(),
-            exit = slideOutHorizontally { it } + fadeOut(),
-            modifier = Modifier.align(Alignment.CenterEnd),
-        ) {
-            LampaGuide(onClose = { guideOpen = false })
+            // Затемняем главный экран под боковыми панелями, чтобы текст не просвечивал
+            AnimatedVisibility(visible = guideOpen || openTorrent != null, enter = fadeIn(), exit = fadeOut()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color(0xB3000000)),
+                )
+            }
+
+            AnimatedVisibility(
+                visible = guideOpen,
+                enter = slideInHorizontally(spring(dampingRatio = 0.85f)) { it } + fadeIn(),
+                exit = slideOutHorizontally { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.CenterEnd),
+            ) {
+                LampaGuide(onClose = { guideOpen = false })
+            }
+
+            val shownTorrent = openTorrent ?: rememberLastTorrent(openTorrent)
+            AnimatedVisibility(
+                visible = openTorrent != null,
+                enter = slideInHorizontally(spring(dampingRatio = 0.85f)) { it } + fadeIn(),
+                exit = slideOutHorizontally { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.CenterEnd),
+            ) {
+                shownTorrent?.let { torrent ->
+                    TorrentPanel(
+                        torrent = torrent,
+                        load = loadTorrent,
+                        onPlay = onPlayTorrentFile,
+                        onClose = { openTorrent = null },
+                    )
+                }
+            }
         }
     }
+}
+
+/** Список полок — чтобы полка с фокусом могла прокрутить себя к верху. */
+private val LocalShelfListState = compositionLocalOf<LazyListState?> { null }
+
+/** Первая карточка полки — сюда встаёт фокус при первом входе в ряд. */
+private val LocalShelfFirst = compositionLocalOf<FocusRequester?> { null }
+
+/** Обычное поведение «показать элемент с фокусом» — для горизонтальных рядов. */
+private val LocalRowBringIntoViewSpec = compositionLocalOf<BringIntoViewSpec?> { null }
+
+@OptIn(ExperimentalFoundationApi::class)
+private object NoBringIntoView : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
+}
+
+@Composable
+private fun Modifier.firstInShelf(index: Int): Modifier {
+    val first = LocalShelfFirst.current
+    return if (index == 0 && first != null) focusRequester(first) else this
+}
+
+/** Последняя открытая раздача — чтобы панель красиво уехала, а не исчезла пустой. */
+@Composable
+private fun rememberLastTorrent(current: TorrentInfo?): TorrentInfo? {
+    val holder = remember { arrayOfNulls<TorrentInfo>(1) }
+    if (current != null) holder[0] = current
+    return holder[0]
 }
 
 private fun HistoryEntry.toHero(): Hero {
@@ -281,9 +419,28 @@ private fun TopBar() {
 
 @Composable
 private fun HeroBlock(hero: Hero) {
+    Row(Modifier.fillMaxSize()) {
+        HeroText(hero, Modifier.weight(1f))
+        hero.poster?.let { poster ->
+            Spacer(Modifier.width(24.dp))
+            PosterImage(
+                poster,
+                hero.title,
+                Modifier
+                    .padding(top = 16.dp)
+                    .size(width = 110.dp, height = 165.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                letterSize = 70,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeroText(hero: Hero, modifier: Modifier) {
     Column(
-        Modifier
-            .fillMaxSize()
+        modifier
+            .fillMaxHeight()
             .padding(top = 28.dp),
     ) {
         Text(hero.tag, color = AppColors.Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
@@ -308,7 +465,7 @@ private fun HeroBlock(hero: Hero) {
                 fontSize = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(0.6f),
+                modifier = Modifier.fillMaxWidth(0.75f),
             )
         }
     }
@@ -345,19 +502,27 @@ private fun AmbientBackground(seed: String?) {
 }
 
 /** Полка с заголовком; появляется с небольшой задержкой по порядку — «каскадом». */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Shelf(
     title: String,
     index: Int,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
+    val listState = LocalShelfListState.current
+    val scope = rememberCoroutineScope()
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
     AnimatedVisibility(
         visibleState = visible,
         enter = fadeIn(tween(500, delayMillis = 100 + index * 120)) +
             slideInVertically(tween(500, delayMillis = 100 + index * 120)) { it / 3 },
     ) {
-        Column {
+        // Ряд с фокусом плавно поднимается к верху списка — предыдущие уходят за край целиком
+        Column(
+            Modifier.onFocusChanged {
+                if (it.hasFocus && listState != null) scope.launch { listState.animateScrollToItem(index) }
+            },
+        ) {
             Text(
                 title,
                 color = AppColors.TextPrimary,
@@ -365,11 +530,19 @@ private fun Shelf(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 56.dp, top = 8.dp),
             )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(22.dp),
-                contentPadding = PaddingValues(horizontal = 56.dp, vertical = 16.dp),
-                content = content,
-            )
+            val first = remember { FocusRequester() }
+            CompositionLocalProvider(
+                LocalShelfFirst provides first,
+                LocalBringIntoViewSpec provides (LocalRowBringIntoViewSpec.current ?: LocalBringIntoViewSpec.current),
+            ) {
+                // Возвращаемся в ряд на ту же карточку; при первом входе — на первую
+                LazyRow(
+                    modifier = Modifier.focusRestorer(first),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                    contentPadding = PaddingValues(horizontal = 56.dp, vertical = 16.dp),
+                    content = content,
+                )
+            }
         }
     }
 }

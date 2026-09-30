@@ -9,6 +9,8 @@ media3 = "1.9.4"
 ffmpegDecoder = "1.9.0+1"
 materialIcons = "1.7.8"
 junit = "4.13.2"
+# Coil 3.3 собран Kotlin 2.2 — новее требуют Kotlin 2.3+
+coil = "3.3.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -25,6 +27,8 @@ media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash", vers
 media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 media3-ffmpeg = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "ffmpegDecoder" }
 junit = { module = "junit:junit", version.ref = "junit" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

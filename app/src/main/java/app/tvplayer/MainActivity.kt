@@ -13,8 +13,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import app.tvplayer.data.HistoryEntry
 import app.tvplayer.data.PlaybackHistory
+import app.tvplayer.data.PlayerSettings
+import app.tvplayer.torrserver.TorrServerClient
+import app.tvplayer.torrserver.TorrentFile
+import app.tvplayer.torrserver.TorrentInfo
+import app.tvplayer.ui.home.TorrServerState
 import app.tvplayer.demo.DemoContent
 import app.tvplayer.demo.DemoItem
 import app.tvplayer.player.PlayerActivity
@@ -25,7 +32,9 @@ import app.tvplayer.ui.home.HomeScreen
 class MainActivity : ComponentActivity() {
 
     private lateinit var history: PlaybackHistory
+    private lateinit var settings: PlayerSettings
     private var continueWatching by mutableStateOf<List<HistoryEntry>>(emptyList())
+    private var torrServer by mutableStateOf<TorrServerState>(TorrServerState.Loading)
     private var resultMessage by mutableStateOf<String?>(null)
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -47,6 +56,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         history = PlaybackHistory(this)
+        settings = PlayerSettings(this)
         setContent {
             TVPlayerTheme {
                 HomeScreen(
@@ -61,6 +71,10 @@ class MainActivity : ComponentActivity() {
                     },
                     onPlayDemo = ::playDemo,
                     onOpenFile = ::pickFile,
+                    torrServer = torrServer,
+                    loadTorrent = { hash -> TorrServerClient(settings.torrServerUrl).get(hash) },
+                    onPlayTorrentFile = ::playTorrentFile,
+                    onRetryTorrServer = ::refreshTorrServer,
                 )
             }
         }
@@ -73,6 +87,35 @@ class MainActivity : ComponentActivity() {
 
     private fun refresh() {
         continueWatching = history.continueWatching()
+        refreshTorrServer()
+    }
+
+    private fun refreshTorrServer() {
+        val client = TorrServerClient(settings.torrServerUrl)
+        lifecycleScope.launch {
+            torrServer = runCatching { client.list() }
+                .fold(
+                    onSuccess = { TorrServerState.Ready(client.baseUrl, it) },
+                    onFailure = { TorrServerState.Unavailable(client.baseUrl) },
+                )
+        }
+    }
+
+    /** Запуск файла из раздачи: все видео раздачи уходят в плеер плейлистом, как это делает Lampa. */
+    private fun playTorrentFile(torrent: TorrentInfo, file: TorrentFile) {
+        val client = TorrServerClient(settings.torrServerUrl)
+        val videos = torrent.videoFiles
+        val single = videos.size == 1
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setClass(this, PlayerActivity::class.java)
+            .setDataAndType(Uri.parse(client.streamUrl(torrent.hash, file)), "video/*")
+            .putExtra("title", if (single) torrent.title else file.displayName)
+        if (!single) {
+            val uris: Array<Parcelable> = videos.map { Uri.parse(client.streamUrl(torrent.hash, it)) }.toTypedArray()
+            intent.putExtra("video_list", uris)
+            intent.putExtra("video_list.name", videos.map { it.displayName }.toTypedArray())
+        }
+        startActivity(intent)
     }
 
     private fun pickFile() {

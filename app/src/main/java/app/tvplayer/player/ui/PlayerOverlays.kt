@@ -54,6 +54,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.tvplayer.torrserver.TorrentInfo
+import app.tvplayer.torrserver.formatSpeed
+import app.tvplayer.torrserver.peersLabel
+import app.tvplayer.torrserver.seedsLabel
 import app.tvplayer.ui.AppColors
 import app.tvplayer.ui.TvButton
 import kotlin.math.abs
@@ -119,9 +123,9 @@ fun BoxScope.SeekBubble(deltaMs: Long?) {
     }
 }
 
-/** Индикатор загрузки: вращающаяся дуга с градиентом и подпись. */
+/** Индикатор загрузки: вращающаяся дуга с градиентом, подпись и статистика торрента. */
 @Composable
-fun BufferingIndicator(modifier: Modifier = Modifier) {
+fun BufferingIndicator(torrent: TorrentInfo?, modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "buffering")
     val angle by transition.animateFloat(
         initialValue = 0f,
@@ -150,7 +154,40 @@ fun BufferingIndicator(modifier: Modifier = Modifier) {
             )
         }
         Spacer(Modifier.height(14.dp))
-        Text("Загрузка", color = Color.White.copy(alpha = pulse), fontSize = 16.sp)
+        Text(
+            if (torrent?.isPreloading == true) "Предзагрузка ${(torrent.preloadProgress * 100).toInt()}%" else "Загрузка",
+            color = Color.White.copy(alpha = pulse),
+            fontSize = 16.sp,
+        )
+        if (torrent != null) {
+            Spacer(Modifier.height(10.dp))
+            // Сразу видно, в чём дело: медленная раздача или мало пиров
+            Text(
+                "↓ ${formatSpeed(torrent.downloadSpeed)}  ·  ${peersLabel(torrent.activePeers)}" +
+                    if (torrent.seeders > 0) "  ·  ${seedsLabel(torrent.seeders)}" else "",
+                color = AppColors.TextSecondary,
+                fontSize = 14.sp,
+            )
+            if (torrent.isPreloading) {
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    Modifier
+                        .width(220.dp)
+                        .height(4.dp)
+                        .background(AppColors.GlassLight, RoundedCornerShape(2.dp)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(torrent.preloadProgress)
+                            .height(4.dp)
+                            .background(
+                                Brush.horizontalGradient(listOf(AppColors.Accent, AppColors.AccentSecondary)),
+                                RoundedCornerShape(2.dp),
+                            ),
+                    )
+                }
+            }
+        }
     }
 }
 

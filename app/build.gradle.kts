@@ -79,5 +79,8 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.ffmpeg)
 
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network)
+
     testImplementation(libs.junit)
 }

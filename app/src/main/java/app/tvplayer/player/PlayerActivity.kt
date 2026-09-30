@@ -29,6 +29,7 @@ import app.tvplayer.player.afr.AutoFrameRate
 import app.tvplayer.player.afr.FrameRateDetector
 import app.tvplayer.player.afr.FrameRateMatcher
 import app.tvplayer.player.ui.PlayerScreen
+import app.tvplayer.torrserver.TorrServerClient
 import app.tvplayer.player.ui.formatTime
 import app.tvplayer.ui.TVPlayerTheme
 
@@ -135,6 +136,8 @@ class PlayerActivity : ComponentActivity() {
 
         releasePlayer()
         completed = false
+        // Запоминаем адрес TorrServer, с которого Lampa отдаёт поток, — для полки на главном экране
+        TorrServerClient.parseLink(request.current.uri)?.let { settings.torrServerUrl = it.baseUrl }
         frameRateDetector.reset()
         autoFrameRate.onNewItem()
         autoFrameRate.setEnabled(autoFrameRateEnabled, null)

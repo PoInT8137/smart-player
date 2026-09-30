@@ -1,5 +1,6 @@
 package app.tvplayer.player.ui
 
+import android.net.Uri
 import android.os.SystemClock
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -50,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +82,10 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.tvplayer.player.PlayerStateHolder
 import app.tvplayer.player.afr.FrameRateMatcher
+import app.tvplayer.torrserver.TorrServerClient
+import app.tvplayer.torrserver.TorrentInfo
+import app.tvplayer.torrserver.formatSpeed
+import app.tvplayer.torrserver.peersLabel
 import app.tvplayer.ui.AppColors
 import app.tvplayer.ui.Clock
 import app.tvplayer.ui.InfoBadge
@@ -179,6 +185,20 @@ fun PlayerScreen(
     val nextUpVisible = state.hasNext && state.durationMs > 60_000 &&
         remainingInItem in 1..NEXT_UP_MS && nextUpDismissedFor != state.itemIndex &&
         state.error == null && !overlayOpen && !controlsVisible
+
+    // Статистика торрента, если поток идёт через TorrServer
+    val torrentLink = remember(state.currentUri) {
+        state.currentUri?.let { TorrServerClient.parseLink(Uri.parse(it)) }
+    }
+    val torrent by produceState<TorrentInfo?>(initialValue = null, torrentLink) {
+        value = null
+        val link = torrentLink ?: return@produceState
+        val client = TorrServerClient(link.baseUrl)
+        while (true) {
+            runCatching { client.get(link.hash) }.onSuccess { value = it }
+            delay(if (state.isBuffering) 1_000 else 3_000)
+        }
+    }
 
     // --- Эффекты ---
 
@@ -343,7 +363,7 @@ fun PlayerScreen(
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center),
         ) {
-            BufferingIndicator()
+            BufferingIndicator(torrent)
         }
 
         CenterFlash(flashIcon, rememberLast(flashIcon))
@@ -421,6 +441,7 @@ fun PlayerScreen(
 
                 TopInfo(
                     state = state,
+                    torrent = torrent,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .animateEnterExit(
@@ -554,7 +575,7 @@ fun PlayerScreen(
 }
 
 @Composable
-private fun TopInfo(state: PlayerStateHolder, modifier: Modifier = Modifier) {
+private fun TopInfo(state: PlayerStateHolder, torrent: TorrentInfo?, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -577,6 +598,7 @@ private fun TopInfo(state: PlayerStateHolder, modifier: Modifier = Modifier) {
                 InfoBadge("${state.itemIndex + 1} из ${state.itemCount}", accent = true, small = true)
             }
             mediaBadges(state.tracks).forEach { InfoBadge(it, small = true) }
+            torrent?.let { InfoBadge("↓ ${formatSpeed(it.downloadSpeed)} · ${peersLabel(it.activePeers)}", small = true) }
             state.videoFps?.let { fps ->
                 FrameRateMatcher.normalize(fps)?.let { InfoBadge("${FrameRateMatcher.format(it)} fps", small = true) }
             }

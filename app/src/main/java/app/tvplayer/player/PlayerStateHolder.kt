@@ -36,6 +36,8 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
         private set
     var itemTitles by mutableStateOf<List<String>>(emptyList())
         private set
+    var currentUri by mutableStateOf<String?>(null)
+        private set
     var speed by mutableFloatStateOf(1f)
         private set
     var error by mutableStateOf<PlaybackException?>(null)
@@ -88,6 +90,7 @@ class PlayerStateHolder(val player: ExoPlayer) : Player.Listener {
         tracks = player.currentTracks
         title = player.mediaMetadata.title?.toString()
         itemIndex = player.currentMediaItemIndex
+        currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
         val titles = List(player.mediaItemCount) { i ->
             player.getMediaItemAt(i).mediaMetadata.title?.toString() ?: "Файл ${i + 1}"
         }
