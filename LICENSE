@@ -1,0 +1,82 @@
+Smart Player
+Copyright (c) 2026 PoInT8137. All rights reserved.
+
+================================================================================
+ENGLISH
+================================================================================
+
+This repository is made public for transparency and so that people can
+download and use the app. It is NOT open source.
+
+1. USING THE APP — ALLOWED
+   You may download, install and use official builds of Smart Player
+   (published on this repository's Releases page) free of charge, for
+   personal, non-commercial use, on any number of your own devices.
+   You may share links to this repository and its Releases page.
+
+2. THE SOURCE CODE — VIEW ONLY
+   You may view and read the source code. Every other right is reserved
+   by the copyright holder. Without prior written permission of the
+   copyright holder you may NOT:
+     a) copy the source code, in whole or in part, into any other project;
+     b) modify the source code or create derivative works;
+     c) build and distribute your own versions of the app, modified or not;
+     d) redistribute the app or its source code (other than by linking to
+        this repository), including re-uploading APK files elsewhere;
+     e) sell, rent, sublicense or use the app or the code commercially;
+     f) publish the app or the code under a different name or author.
+
+   Forking this repository on GitHub is possible because of GitHub's Terms
+   of Service, but a fork grants no rights beyond those listed in section 1.
+
+3. THIRD-PARTY COMPONENTS
+   The app uses third-party libraries that remain under their own licenses,
+   including AndroidX Media3 (Apache License 2.0), Jetpack Compose (Apache
+   License 2.0) and FFmpeg (LGPL 2.1 or later) via the Jellyfin
+   media3-ffmpeg-decoder build. Nothing in this license restricts your
+   rights under those licenses for those components.
+
+4. NO WARRANTY
+   The app is provided "as is", without warranty of any kind. The copyright
+   holder is not liable for any damages arising from its use.
+
+For permission requests, open an issue in this repository.
+
+================================================================================
+РУССКИЙ (перевод для удобства; при расхождении приоритет у английского текста)
+================================================================================
+
+Репозиторий открыт для прозрачности и чтобы люди могли скачать и
+пользоваться приложением. Это НЕ открытое ПО (не open source).
+
+1. ПОЛЬЗОВАТЬСЯ ПРИЛОЖЕНИЕМ — МОЖНО
+   Разрешается бесплатно скачивать, устанавливать и использовать официальные
+   сборки Smart Player (со страницы Releases этого репозитория) для личного
+   некоммерческого использования на любом количестве своих устройств.
+   Можно делиться ссылками на этот репозиторий и страницу Releases.
+
+2. ИСХОДНЫЙ КОД — ТОЛЬКО ДЛЯ ПРОСМОТРА
+   Код можно смотреть и читать. Все остальные права принадлежат
+   правообладателю. Без его письменного разрешения ЗАПРЕЩЕНО:
+     а) копировать код, целиком или частично, в другие проекты;
+     б) изменять код или создавать производные работы;
+     в) собирать и распространять свои версии приложения, изменённые или нет;
+     г) распространять приложение или код (кроме ссылок на этот репозиторий),
+        в том числе перезаливать APK на другие сайты;
+     д) продавать, сдавать в аренду, сублицензировать или использовать
+        приложение или код в коммерческих целях;
+     е) публиковать приложение или код под другим названием или авторством.
+
+   Форк на GitHub технически возможен по правилам платформы, но не даёт
+   никаких прав сверх пункта 1.
+
+3. СТОРОННИЕ КОМПОНЕНТЫ
+   Приложение использует сторонние библиотеки под их собственными лицензиями:
+   AndroidX Media3 и Jetpack Compose (Apache 2.0), FFmpeg (LGPL 2.1+) в сборке
+   Jellyfin media3-ffmpeg-decoder. Эта лицензия не ограничивает ваши права на
+   эти компоненты.
+
+4. БЕЗ ГАРАНТИЙ
+   Приложение предоставляется «как есть», без каких-либо гарантий.
+
+Для запроса разрешений создайте issue в этом репозитории.

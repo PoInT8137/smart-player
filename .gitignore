@@ -11,3 +11,6 @@
 .kotlin/
 *.hprof
 /dist/
+/keystore.properties
+*.jks
+*.keystore
