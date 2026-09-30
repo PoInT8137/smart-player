@@ -20,7 +20,7 @@ import app.tvplayer.BuildConfig
 @OptIn(UnstableApi::class)
 object PlayerFactory {
 
-    private const val USER_AGENT = "SmartPlayer/0.1 (Android TV)"
+    private const val USER_AGENT = "SmartPlayer/0.2 (Android TV)"
 
     const val SEEK_STEP_MS = 10_000L
 
