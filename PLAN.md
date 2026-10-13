@@ -79,7 +79,9 @@ Lampa торренты не качает сама: она отдаёт magnet в
 - [x] Видеодвижок mpv + интерфейс uosc в цветах Smart Player, история через JSON IPC
 - [x] Сборка: `gradlew :desktop:createDistributable -Psmartplayer.desktopBuildDir=C:/build/sp`
       (jlink/jpackage не понимают кириллицу в пути проекта); mpv скачивает `desktop/fetch-mpv.ps1`
-- [ ] Установщик (.msi/.exe через WiX), ассоциации файлов, Lampa на ПК
+- [x] Интерфейс плеера как на TV: mpv встроен в окно, поверх — слой Compose (0.3.0)
+- [x] Lampa для ПК: лаунчер mpc-hc64.exe (белый список lampa-desktop), режим MPC-HC
+- [x] Установщик (jpackage + WiX 3, PATH к WiX при сборке), ассоциации видеофайлов
 
 ### Этап 4 — медиатека
 - [ ] Файловый браузер: USB, внутренняя память
