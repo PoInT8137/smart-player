@@ -73,6 +73,14 @@ Lampa торренты не качает сама: она отдаёт magnet в
 - [ ] Открытие magnet/.torrent напрямую, выбор файла из раздачи
 - [ ] Автоматический «следующий эпизод» внутри одной раздачи
 
+### Версия для Windows ✅ (0.2.0)
+- [x] Модуль `core` — общий клиент TorrServer для Android и Windows
+- [x] Модуль `desktop` (Compose Multiplatform): главное окно, TorrServer, открыть файл / magnet-ссылку
+- [x] Видеодвижок mpv + интерфейс uosc в цветах Smart Player, история через JSON IPC
+- [x] Сборка: `gradlew :desktop:createDistributable -Psmartplayer.desktopBuildDir=C:/build/sp`
+      (jlink/jpackage не понимают кириллицу в пути проекта); mpv скачивает `desktop/fetch-mpv.ps1`
+- [ ] Установщик (.msi/.exe через WiX), ассоциации файлов, Lampa на ПК
+
 ### Этап 4 — медиатека
 - [ ] Файловый браузер: USB, внутренняя память
 - [ ] Сетевые источники: SMB, DLNA/UPnP, WebDAV

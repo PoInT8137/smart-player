@@ -105,6 +105,23 @@ class TorrServerClient(baseUrl: String) {
     suspend fun get(hash: String): TorrentInfo =
         TorrentInfo.fromJson(parse(request("POST", "/torrents", action("get", hash))).jsonObject)
 
+    /** Добавить раздачу по magnet-ссылке или хешу; сохраняется в списке TorrServer. */
+    suspend fun add(link: String, title: String? = null): TorrentInfo =
+        TorrentInfo.fromJson(
+            parse(
+                request(
+                    "POST",
+                    "/torrents",
+                    buildJsonObject {
+                        put("action", "add")
+                        put("link", link)
+                        put("save_to_db", true)
+                        if (title != null) put("title", title)
+                    }.toString(),
+                )
+            ).jsonObject
+        )
+
     private fun action(name: String, hash: String? = null): String = buildJsonObject {
         put("action", name)
         if (hash != null) put("hash", hash)

@@ -25,6 +25,14 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Если dl.google.com недоступен (прокси/VPN), библиотеки androidx можно взять с зеркала
+        // Alibaba Cloud — только по явному флагу: gradlew ... -Psmartplayer.googleMirror=true
+        if (providers.gradleProperty("smartplayer.googleMirror").orNull == "true") {
+            maven("https://maven.aliyun.com/repository/google") {
+                name = "GoogleMirrorAliyun"
+                content { includeGroupByRegex("androidx.*") }
+            }
+        }
         googleOnly()
         mavenCentral()
     }

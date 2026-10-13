@@ -33,8 +33,11 @@ download and use the app. It is NOT open source.
    The app uses third-party libraries that remain under their own licenses,
    including AndroidX Media3 (Apache License 2.0), Jetpack Compose (Apache
    License 2.0) and FFmpeg (LGPL 2.1 or later) via the Jellyfin
-   media3-ffmpeg-decoder build. Nothing in this license restricts your
-   rights under those licenses for those components.
+   media3-ffmpeg-decoder build. The Windows version ships the separate
+   programs mpv (GPL v2+/LGPL; source: https://github.com/mpv-player/mpv,
+   build: https://github.com/shinchiro/mpv-winbuild-cmake) and the uosc
+   script (MIT; https://github.com/tomasklaen/uosc). Nothing in this license
+   restricts your rights under those licenses for those components.
 
 4. NO WARRANTY
    The app is provided "as is", without warranty of any kind. The copyright
@@ -73,8 +76,9 @@ For permission requests, open an issue in this repository.
 3. СТОРОННИЕ КОМПОНЕНТЫ
    Приложение использует сторонние библиотеки под их собственными лицензиями:
    AndroidX Media3 и Jetpack Compose (Apache 2.0), FFmpeg (LGPL 2.1+) в сборке
-   Jellyfin media3-ffmpeg-decoder. Эта лицензия не ограничивает ваши права на
-   эти компоненты.
+   Jellyfin media3-ffmpeg-decoder. В версии для Windows поставляются отдельные
+   программы mpv (GPL v2+/LGPL, исходники: https://github.com/mpv-player/mpv)
+   и скрипт uosc (MIT). Эта лицензия не ограничивает ваши права на эти компоненты.
 
 4. БЕЗ ГАРАНТИЙ
    Приложение предоставляется «как есть», без каких-либо гарантий.

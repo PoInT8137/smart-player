@@ -13,3 +13,9 @@ build/
 /keystore.properties
 *.jks
 *.keystore
+
+# Windows-версия: бинарники mpv и uosc скачиваются скриптом desktop/fetch-mpv.ps1
+/desktop/resources/windows/mpv/*
+!/desktop/resources/windows/mpv/portable_config/
+/desktop/resources/windows/mpv/portable_config/scripts/
+/desktop/resources/windows/mpv/portable_config/fonts/

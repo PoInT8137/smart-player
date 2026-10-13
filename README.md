@@ -11,6 +11,16 @@
 В Lampa: настройки плеера → внешний плеер Android → при запуске фильма выбрать
 **Smart Player** → «Всегда».
 
+## Версия для Windows
+
+На странице [Releases](../../releases/latest) есть архив `SmartPlayer-…-windows-x64.zip`:
+распакуйте и запустите `SmartPlayer.exe` — установка не нужна. Внутри видеодвижок
+[mpv](https://mpv.io) с интерфейсом [uosc](https://github.com/tomasklaen/uosc).
+
+- Главное окно: «Продолжить просмотр», раздачи TorrServer, открыть файл, вставить magnet-ссылку
+- `SmartPlayer.exe "<файл или ссылка>"` — сразу воспроизвести (для «Открыть с помощью»)
+- Клавиши в плеере: пробел — пауза, ← → — перемотка, F / Enter — полный экран, A / S — звук / субтитры
+
 ## Возможности
 
 - Media3 ExoPlayer + FFmpeg: MKV/MP4/AVI/TS, HLS/DASH, H.264/HEVC/AV1/HDR, звук AC3/E-AC3/DTS/TrueHD
