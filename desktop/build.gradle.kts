@@ -69,12 +69,14 @@ compose.desktop {
     }
 }
 
-// Lampa для ПК узнаёт тип плеера по пути: с «mpc-hc» в имени она передаёт позицию старта
-// и опрашивает веб-интерфейс, чтобы сохранить прогресс. Кладём рядом такую копию лаунчера.
+// Lampa для ПК узнаёт тип плеера по пути: с «mpc-hc» она передаёт позицию старта и опрашивает
+// веб-интерфейс, чтобы сохранить прогресс. Настольная сборка lampa-desktop к тому же запускает
+// только файлы из белого списка имён (vlc.exe, mpc-hc64.exe, mpv.exe…). Поэтому кладём рядом
+// копию лаунчера с именем mpc-hc64.exe — это тот же Smart Player в режиме совместимости.
 tasks.matching { it.name == "createDistributable" }.configureEach {
     doLast {
         val dir = layout.buildDirectory.dir("compose/binaries/main/app/SmartPlayer").get().asFile
-        File(dir, "SmartPlayer.exe").copyTo(File(dir, "SmartPlayer-mpc-hc.exe"), overwrite = true)
-        File(dir, "app/SmartPlayer.cfg").copyTo(File(dir, "app/SmartPlayer-mpc-hc.cfg"), overwrite = true)
+        File(dir, "SmartPlayer.exe").copyTo(File(dir, "mpc-hc64.exe"), overwrite = true)
+        File(dir, "app/SmartPlayer.cfg").copyTo(File(dir, "app/mpc-hc64.cfg"), overwrite = true)
     }
 }
