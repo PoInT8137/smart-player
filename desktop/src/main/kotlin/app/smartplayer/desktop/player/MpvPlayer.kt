@@ -6,6 +6,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
@@ -20,6 +21,7 @@ data class PlaybackProgress(
     val item: PlayItem,
     val positionMs: Long,
     val durationMs: Long,
+    val paused: Boolean = false,
 ) {
     /** Досмотрено (последние 20 секунд — титры). */
     val completed: Boolean get() = durationMs > 0 && positionMs >= durationMs - 20_000
@@ -46,6 +48,7 @@ class MpvPlayer(private val mpvExe: File) {
         items: List<PlayItem>,
         startIndex: Int,
         startPositionMs: Long?,
+        fullscreen: Boolean = false,
         onProgress: (PlaybackProgress) -> Unit,
         onItemFinished: (PlayItem) -> Unit,
     ): PlaybackProgress? = withContext(Dispatchers.IO) {
@@ -54,6 +57,7 @@ class MpvPlayer(private val mpvExe: File) {
             add(mpvExe.absolutePath)
             add("--input-ipc-server=\\\\.\\pipe\\$pipeName")
             add("--playlist-start=$startIndex")
+            if (fullscreen) add("--fullscreen")
             items.forEachIndexed { i, item ->
                 // Опции «на файл»: своё название и, для первой серии, позиция старта
                 add("--{")
@@ -93,17 +97,18 @@ class MpvPlayer(private val mpvExe: File) {
                     val pos = query("playlist-pos")?.longOrNull?.toInt() ?: currentIndex
                     val time = query("time-pos")?.doubleOrNull
                     val duration = query("duration")?.doubleOrNull
-                    Triple(pos, time, duration)
+                    val paused = query("pause")?.booleanOrNull ?: false
+                    Polled(pos, time, duration, paused)
                 }.getOrNull() ?: break
 
-                val (pos, time, duration) = result
+                val (pos, time, duration, paused) = result
                 if (pos != currentIndex && pos in items.indices) {
                     // Перешли к следующей серии — предыдущая досмотрена
                     if (pos > currentIndex) onItemFinished(items[currentIndex])
                     currentIndex = pos
                 }
                 if (time != null && currentIndex in items.indices) {
-                    last = PlaybackProgress(items[currentIndex], (time * 1000).toLong(), ((duration ?: 0.0) * 1000).toLong())
+                    last = PlaybackProgress(items[currentIndex], (time * 1000).toLong(), ((duration ?: 0.0) * 1000).toLong(), paused)
                         .also(onProgress)
                 }
                 delay(1_000)
@@ -114,6 +119,8 @@ class MpvPlayer(private val mpvExe: File) {
         process.waitFor()
         last
     }
+
+    private data class Polled(val index: Int, val time: Double?, val duration: Double?, val paused: Boolean)
 
     /** Ждём, пока mpv создаст pipe (обычно доли секунды). */
     private suspend fun connect(name: String, process: Process): RandomAccessFile? {

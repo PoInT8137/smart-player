@@ -10,9 +10,12 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import app.smartplayer.desktop.data.AppLog
 import app.smartplayer.desktop.data.HistoryEntry
 import app.smartplayer.desktop.data.PlaybackHistory
+import app.smartplayer.desktop.player.MpcWebInterface
 import app.smartplayer.desktop.player.MpvPlayer
+import app.smartplayer.desktop.player.PlaybackProgress
 import app.smartplayer.desktop.player.PlayItem
 import app.smartplayer.desktop.ui.HomeScreen
 import app.smartplayer.desktop.ui.SmartPlayerTheme
@@ -32,9 +35,8 @@ import java.io.File
  *  - `SmartPlayer.exe <ссылка или файл>` — сразу воспроизвести (для «Открыть с помощью» и внешних программ).
  */
 fun main(args: Array<String>) {
-    val target = args.firstOrNull { it.isNotBlank() }
-    if (target != null) {
-        playDirect(target)
+    LaunchArgs.parse(args)?.let {
+        playDirect(it)
         return
     }
 
@@ -64,23 +66,39 @@ fun main(args: Array<String>) {
     }
 }
 
-/** Воспроизведение без главного окна; прогресс сохраняется в общую историю. */
-private fun playDirect(target: String) = runBlocking {
+/**
+ * Воспроизведение без главного окна (запуск из Lampa или «Открыть с помощью»).
+ * Прогресс сохраняется в общую историю; если Lampa ждёт веб-интерфейс MPC-HC — отвечаем ей.
+ */
+private fun playDirect(launch: LaunchArgs) = runBlocking {
     val history = PlaybackHistory()
-    val file = File(target)
-    val item = if (file.isFile) PlayItem(file.absolutePath, file.nameWithoutExtension)
-    else PlayItem(target, target.substringAfterLast('/').substringBefore('?').ifBlank { target })
-    val save = { p: app.smartplayer.desktop.player.PlaybackProgress ->
-        history.save(HistoryEntry(p.item.url, p.item.title, p.positionMs, p.durationMs, System.currentTimeMillis()))
+    val file = File(launch.target)
+    val item = if (file.isFile) PlayItem(file.absolutePath, file.nameWithoutExtension) else PlayItem(launch.target, launch.title)
+    AppLog.write("Запуск: ${launch.target} старт=${launch.startPositionMs} порт=${launch.mpcWebPort} весь экран=${launch.fullscreen}")
+    val web = launch.mpcWebPort?.let { port ->
+        runCatching { MpcWebInterface(port) }
+            .onSuccess { AppLog.write("Веб-интерфейс MPC-HC на порту $port") }
+            .onFailure { AppLog.write("Не удалось открыть порт $port", it) }
+            .getOrNull()
     }
-    val result = MpvPlayer.locate().play(
-        items = listOf(item),
-        startIndex = 0,
-        startPositionMs = history.get(item.url)?.resumePositionMs,
-        onProgress = save,
-        onItemFinished = { history.remove(it.url) },
-    )
-    result?.let { if (it.completed) history.remove(it.item.url) else save(it) }
+    val save: (PlaybackProgress) -> Unit = { p ->
+        history.save(HistoryEntry(p.item.url, p.item.title, p.positionMs, p.durationMs, System.currentTimeMillis()))
+        web?.update(p)
+    }
+    try {
+        val result = MpvPlayer.locate().play(
+            items = listOf(item),
+            startIndex = 0,
+            // Позиция от Lampa важнее своей истории
+            startPositionMs = launch.startPositionMs ?: history.get(item.url)?.resumePositionMs,
+            fullscreen = launch.fullscreen,
+            onProgress = save,
+            onItemFinished = { history.remove(it.url) },
+        )
+        result?.let { if (it.completed) history.remove(it.item.url) else save(it) }
+    } finally {
+        web?.close()
+    }
 }
 
 private fun appIcon(): BitmapPainter {
