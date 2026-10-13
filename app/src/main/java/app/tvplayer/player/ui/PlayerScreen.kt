@@ -1,6 +1,5 @@
 package app.tvplayer.player.ui
 
-import android.net.Uri
 import android.os.SystemClock
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -188,7 +187,7 @@ fun PlayerScreen(
 
     // Статистика торрента, если поток идёт через TorrServer
     val torrentLink = remember(state.currentUri) {
-        state.currentUri?.let { TorrServerClient.parseLink(Uri.parse(it)) }
+        state.currentUri?.let { TorrServerClient.parseLink(it) }
     }
     val torrent by produceState<TorrentInfo?>(initialValue = null, torrentLink) {
         value = null

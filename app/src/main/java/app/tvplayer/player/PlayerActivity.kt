@@ -137,7 +137,7 @@ class PlayerActivity : ComponentActivity() {
         releasePlayer()
         completed = false
         // Запоминаем адрес TorrServer, с которого Lampa отдаёт поток, — для полки на главном экране
-        TorrServerClient.parseLink(request.current.uri)?.let { settings.torrServerUrl = it.baseUrl }
+        TorrServerClient.parseLink(request.current.uri.toString())?.let { settings.torrServerUrl = it.baseUrl }
         frameRateDetector.reset()
         autoFrameRate.onNewItem()
         autoFrameRate.setEnabled(autoFrameRateEnabled, null)

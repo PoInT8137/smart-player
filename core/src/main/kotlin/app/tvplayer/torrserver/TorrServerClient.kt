@@ -1,12 +1,23 @@
 package app.tvplayer.torrserver
 
-import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
+import java.net.URLDecoder
+import java.net.URLEncoder
 
 data class TorrentFile(val id: Int, val path: String, val length: Long) {
     val name: String get() = path.substringAfterLast('/')
@@ -48,25 +59,28 @@ data class TorrentInfo(
     companion object {
         const val STAT_PRELOAD = 2
 
-        fun fromJson(o: JSONObject) = TorrentInfo(
-            hash = o.optString("hash"),
-            title = o.optString("title").ifBlank { o.optString("name") },
-            poster = o.optString("poster").takeIf { it.startsWith("http") },
-            size = o.optLong("torrent_size"),
-            stat = o.optInt("stat", -1),
-            statString = o.optString("stat_string"),
-            downloadSpeed = o.optDouble("download_speed", 0.0),
-            activePeers = o.optInt("active_peers"),
-            totalPeers = o.optInt("total_peers"),
-            seeders = o.optInt("connected_seeders"),
-            preloadedBytes = o.optLong("preloaded_bytes"),
-            preloadSize = o.optLong("preload_size"),
-            files = o.optJSONArray("file_stats")?.let { arr ->
-                List(arr.length()) { i ->
-                    arr.getJSONObject(i).let { TorrentFile(it.optInt("id"), it.optString("path"), it.optLong("length")) }
-                }
+        fun fromJson(o: JsonObject) = TorrentInfo(
+            hash = o.str("hash"),
+            title = o.str("title").ifBlank { o.str("name") },
+            poster = o.str("poster").takeIf { it.startsWith("http") },
+            size = o.long("torrent_size"),
+            stat = o.long("stat", -1).toInt(),
+            statString = o.str("stat_string"),
+            downloadSpeed = (o["download_speed"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
+            activePeers = o.long("active_peers").toInt(),
+            totalPeers = o.long("total_peers").toInt(),
+            seeders = o.long("connected_seeders").toInt(),
+            preloadedBytes = o.long("preloaded_bytes"),
+            preloadSize = o.long("preload_size"),
+            files = (o["file_stats"] as? kotlinx.serialization.json.JsonArray)?.map { el ->
+                val f = el.jsonObject
+                TorrentFile(f.long("id").toInt(), f.str("path"), f.long("length"))
             }.orEmpty(),
         )
+
+        private fun JsonObject.str(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
+        private fun JsonObject.long(key: String, default: Long = 0): Long =
+            (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() } ?: default
     }
 }
 
@@ -84,20 +98,23 @@ class TorrServerClient(baseUrl: String) {
     /** Версия сервера — заодно проверка, что он доступен. */
     suspend fun echo(): String = request("GET", "/echo", null).trim()
 
-    suspend fun list(): List<TorrentInfo> {
-        val arr = JSONArray(request("POST", "/torrents", JSONObject().put("action", "list").toString()))
-        return List(arr.length()) { TorrentInfo.fromJson(arr.getJSONObject(it)) }
-    }
+    suspend fun list(): List<TorrentInfo> =
+        parse(request("POST", "/torrents", action("list"))).jsonArray.map { TorrentInfo.fromJson(it.jsonObject) }
 
     /** Подробности с файлами. Внимание: «будит» торрент — TorrServer начнёт подключаться к пирам. */
     suspend fun get(hash: String): TorrentInfo =
-        TorrentInfo.fromJson(
-            JSONObject(request("POST", "/torrents", JSONObject().put("action", "get").put("hash", hash).toString()))
-        )
+        TorrentInfo.fromJson(parse(request("POST", "/torrents", action("get", hash))).jsonObject)
+
+    private fun action(name: String, hash: String? = null): String = buildJsonObject {
+        put("action", name)
+        if (hash != null) put("hash", hash)
+    }.toString()
+
+    private fun parse(text: String): JsonElement = Json.parseToJsonElement(text)
 
     /** Ссылка на файл в формате, который использует Lampa, — чтобы совпадала история просмотра. */
     fun streamUrl(hash: String, file: TorrentFile): String =
-        "$baseUrl/stream/${Uri.encode(file.name)}?link=$hash&index=${file.id}&play"
+        "$baseUrl/stream/${URLEncoder.encode(file.name, Charsets.UTF_8).replace("+", "%20")}?link=$hash&index=${file.id}&play"
 
     private suspend fun request(method: String, path: String, body: String?): String = withContext(Dispatchers.IO) {
         val conn = URL(baseUrl + path).openConnection() as HttpURLConnection
@@ -126,17 +143,25 @@ class TorrServerClient(baseUrl: String) {
          *  - /stream/<имя>?link=<hash>&index=N (Lampa)
          *  - /play/<hash>/<index>
          */
-        fun parseLink(uri: Uri): TorrentLink? {
+        fun parseLink(url: String): TorrentLink? {
+            val uri = runCatching { URI(url) }.getOrNull() ?: return null
             if (uri.scheme != "http" && uri.scheme != "https") return null
-            val base = "${uri.scheme}://${uri.encodedAuthority}"
-            val segments = uri.pathSegments
-            val link = uri.getQueryParameter("link")
+            val base = "${uri.scheme}://${uri.rawAuthority}"
+            val segments = uri.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }
+            val link = queryParam(uri.rawQuery, "link")
             return when {
                 segments.firstOrNull() == "stream" && !link.isNullOrBlank() -> TorrentLink(base, hashFromLink(link))
                 segments.firstOrNull() == "play" && segments.size >= 2 -> TorrentLink(base, segments[1].lowercase())
                 else -> null
             }
         }
+
+        private fun queryParam(rawQuery: String?, name: String): String? =
+            rawQuery?.split('&')
+                ?.map { it.split('=', limit = 2) }
+                ?.firstOrNull { it[0] == name }
+                ?.getOrNull(1)
+                ?.let { URLDecoder.decode(it, Charsets.UTF_8) }
 
         /** link может быть хешем или magnet-ссылкой. */
         private fun hashFromLink(link: String): String =
