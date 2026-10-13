@@ -14,7 +14,7 @@ import app.smartplayer.desktop.data.AppLog
 import app.smartplayer.desktop.data.HistoryEntry
 import app.smartplayer.desktop.data.PlaybackHistory
 import app.smartplayer.desktop.player.MpcWebInterface
-import app.smartplayer.desktop.player.MpvPlayer
+import app.smartplayer.desktop.player.PlayerWindow
 import app.smartplayer.desktop.player.PlaybackProgress
 import app.smartplayer.desktop.player.PlayItem
 import app.smartplayer.desktop.ui.HomeScreen
@@ -70,7 +70,13 @@ fun main(args: Array<String>) {
  * Воспроизведение без главного окна (запуск из Lampa или «Открыть с помощью»).
  * Прогресс сохраняется в общую историю; если Lampa ждёт веб-интерфейс MPC-HC — отвечаем ей.
  */
-private fun playDirect(launch: LaunchArgs) = runBlocking {
+private fun playDirect(launch: LaunchArgs) {
+    runBlocking { playAndSave(launch) }
+    // Окна Compose держат AWT живым — после закрытия плеера завершаем процесс явно
+    kotlin.system.exitProcess(0)
+}
+
+private suspend fun playAndSave(launch: LaunchArgs) {
     val history = PlaybackHistory()
     val file = File(launch.target)
     val item = if (file.isFile) PlayItem(file.absolutePath, file.nameWithoutExtension) else PlayItem(launch.target, launch.title)
@@ -86,7 +92,7 @@ private fun playDirect(launch: LaunchArgs) = runBlocking {
         web?.update(p)
     }
     try {
-        val result = MpvPlayer.locate().play(
+        val result = PlayerWindow().play(
             items = listOf(item),
             startIndex = 0,
             // Позиция от Lampa важнее своей истории

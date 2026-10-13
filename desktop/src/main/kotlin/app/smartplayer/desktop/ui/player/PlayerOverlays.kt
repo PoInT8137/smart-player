@@ -1,0 +1,241 @@
+package app.smartplayer.desktop.ui.player
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.smartplayer.desktop.ui.AppColors
+import app.smartplayer.desktop.ui.PillButton
+import app.tvplayer.torrserver.TorrentInfo
+import app.tvplayer.torrserver.formatSpeed
+import app.tvplayer.torrserver.peersLabel
+import app.tvplayer.torrserver.seedsLabel
+import kotlin.math.abs
+
+/** Большой значок плей/пауза по центру: появляется с «пружинкой» и тает. */
+@Composable
+fun BoxScope.CenterFlash(icon: ImageVector?, lastIcon: ImageVector?) {
+    AnimatedVisibility(
+        visible = icon != null,
+        enter = scaleIn(initialScale = 0.5f, animationSpec = tween(220)) + fadeIn(tween(150)),
+        exit = scaleOut(targetScale = 1.4f, animationSpec = tween(450)) + fadeOut(tween(450)),
+        modifier = Modifier.align(Alignment.Center),
+    ) {
+        Box(Modifier.size(132.dp).background(Color(0x80000000), CircleShape), contentAlignment = Alignment.Center) {
+            (icon ?: lastIcon)?.let { Icon(it, null, tint = Color.White, modifier = Modifier.size(72.dp)) }
+        }
+    }
+}
+
+/** «Пузырь» перемотки сбоку экрана: ⏪ −30 с / ⏩ +1:20. */
+@Composable
+fun BoxScope.SeekBubble(deltaMs: Long?) {
+    val forward = (deltaMs ?: 0) >= 0
+    AnimatedVisibility(
+        visible = deltaMs != null,
+        enter = scaleIn(initialScale = 0.7f) + fadeIn(),
+        exit = scaleOut(targetScale = 0.9f) + fadeOut(),
+        modifier = Modifier.align(if (forward) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 140.dp),
+    ) {
+        Column(
+            Modifier.size(170.dp).background(Brush.radialGradient(listOf(Color(0x99000000), Color(0x00000000))), CircleShape),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(if (forward) Icons.Filled.FastForward else Icons.Filled.FastRewind, null, tint = Color.White, modifier = Modifier.size(56.dp))
+            val d = abs(deltaMs ?: 0)
+            Text((if (forward) "+" else "−") + if (d < 60_000) "${d / 1000} с" else formatTime(d), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** Индикатор загрузки: вращающаяся дуга, подпись и статистика торрента. */
+@Composable
+fun BufferingIndicator(torrent: TorrentInfo?, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "buffering")
+    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(1000, easing = LinearEasing)), label = "angle")
+    val pulse by transition.animateFloat(0.4f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pulse")
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(Modifier.size(72.dp).rotate(angle)) {
+            drawArc(
+                brush = Brush.sweepGradient(listOf(Color.Transparent, AppColors.Accent, AppColors.AccentSecondary)),
+                startAngle = 0f, sweepAngle = 300f, useCenter = false,
+                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(
+            if (torrent?.isPreloading == true) "Предзагрузка ${(torrent.preloadProgress * 100).toInt()}%" else "Загрузка",
+            color = Color.White.copy(alpha = pulse), fontSize = 16.sp,
+        )
+        if (torrent != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "↓ ${formatSpeed(torrent.downloadSpeed)}  ·  ${peersLabel(torrent.activePeers)}" +
+                    if (torrent.seeders > 0) "  ·  ${seedsLabel(torrent.seeders)}" else "",
+                color = AppColors.TextSecondary, fontSize = 14.sp,
+            )
+            if (torrent.isPreloading) {
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.width(220.dp).height(4.dp).background(AppColors.GlassLight, RoundedCornerShape(2.dp))) {
+                    Box(
+                        Modifier.fillMaxWidth(torrent.preloadProgress).height(4.dp)
+                            .background(Brush.horizontalGradient(listOf(AppColors.Accent, AppColors.AccentSecondary)), RoundedCornerShape(2.dp)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Карточка «Следующая серия» в конце эпизода. */
+@Composable
+fun NextUpCard(title: String, secondsLeft: Int, progress: Float, onPlayNow: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier.width(440.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xE6121419)).border(1.dp, AppColors.Stroke, RoundedCornerShape(20.dp)),
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+            Text("ДАЛЕЕ", color = AppColors.Accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Через $secondsLeft с", color = AppColors.TextSecondary, fontSize = 15.sp)
+                Spacer(Modifier.weight(1f))
+                PillButton("Смотреть сейчас", onPlayNow, primary = true)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(4.dp).background(AppColors.GlassLight)) {
+            Box(
+                Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(4.dp)
+                    .background(Brush.horizontalGradient(listOf(AppColors.Accent, AppColors.AccentSecondary))),
+            )
+        }
+    }
+}
+
+/** Подсказка по клавише: [Пробел] пауза. */
+@Composable
+fun KeyHint(key: String, action: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            key, color = AppColors.TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.border(1.dp, AppColors.TextMuted, RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(action, color = AppColors.TextSecondary, fontSize = 13.sp)
+    }
+}
+
+/** Небольшой бейдж с технической информацией: 1080p, HDR10, AC3 5.1... */
+@Composable
+fun InfoBadge(text: String, accent: Boolean = false) {
+    Text(
+        text,
+        color = if (accent) AppColors.OnFocused else AppColors.TextPrimary,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .background(if (accent) AppColors.Accent else Color.Transparent, RoundedCornerShape(6.dp))
+            .border(1.dp, if (accent) AppColors.Accent else AppColors.Stroke, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+@Composable
+fun ErrorOverlay(message: String, onExit: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xE61A0E0A), Color(0xF2000000)))), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(640.dp)) {
+            Box(Modifier.size(96.dp).background(AppColors.Accent.copy(alpha = 0.15f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Warning, null, tint = AppColors.Accent, modifier = Modifier.size(48.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            Text("Не удалось воспроизвести", color = AppColors.TextPrimary, fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            Text(message, color = AppColors.TextSecondary, fontSize = 18.sp, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(28.dp))
+            PillButton("Закрыть", onExit, primary = true)
+        }
+    }
+}
+
+/** Прогресс-линия: фон, буфер, просмотрено (с градиентом) и бегунок. */
+@Composable
+fun ProgressTrack(fraction: Float, bufferedFraction: Float, heightPx: Float, thumbScale: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val top = (size.height - heightPx) / 2
+        val r = CornerRadius(heightPx / 2, heightPx / 2)
+        drawRoundRect(Color(0x33FFFFFF), Offset(0f, top), Size(size.width, heightPx), r)
+        drawRoundRect(Color(0x59FFFFFF), Offset(0f, top), Size(size.width * bufferedFraction, heightPx), r)
+        val played = size.width * fraction
+        drawRoundRect(
+            brush = Brush.horizontalGradient(listOf(AppColors.Accent, AppColors.AccentSecondary), endX = size.width.coerceAtLeast(1f)),
+            topLeft = Offset(0f, top), size = Size(played, heightPx), cornerRadius = r,
+        )
+        if (thumbScale > 0.01f) {
+            val c = Offset(played, size.height / 2)
+            drawCircle(AppColors.Accent.copy(alpha = 0.35f * thumbScale), radius = heightPx * 1.9f * thumbScale, center = c)
+            drawCircle(Color.White, radius = heightPx * 1.1f * thumbScale, center = c)
+        }
+    }
+}
+
+private class LastValue<T> { var value: T? = null }
+
+/** Последнее ненулевое значение — чтобы анимация исчезновения показывала старый контент. */
+@Composable
+fun <T> rememberLastValue(value: T?): T? {
+    val holder = remember { LastValue<T>() }
+    if (value != null) holder.value = value
+    return holder.value
+}

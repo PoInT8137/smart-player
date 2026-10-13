@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import app.smartplayer.desktop.data.HistoryEntry
 import app.smartplayer.desktop.data.PlaybackHistory
 import app.smartplayer.desktop.data.Settings
-import app.smartplayer.desktop.player.MpvPlayer
+import app.smartplayer.desktop.player.PlayerWindow
 import app.smartplayer.desktop.player.PlayItem
 import app.smartplayer.desktop.player.PlaybackProgress
 import app.tvplayer.torrserver.TorrServerClient
@@ -27,7 +27,7 @@ class AppModel(private val scope: CoroutineScope) {
 
     val history = PlaybackHistory()
     val settings = Settings()
-    private val mpv = MpvPlayer.locate()
+    private val player = PlayerWindow()
 
     var continueWatching by mutableStateOf(history.continueWatching())
         private set
@@ -63,7 +63,7 @@ class AppModel(private val scope: CoroutineScope) {
     }
 
     fun play(items: List<PlayItem>, startIndex: Int = 0, startPositionMs: Long? = null) {
-        if (!mpv.isAvailable) {
+        if (!player.isAvailable) {
             message = "Не найден видеодвижок mpv рядом с программой"
             return
         }
@@ -76,7 +76,7 @@ class AppModel(private val scope: CoroutineScope) {
         val resume = startPositionMs ?: history.get(first.url)?.resumePositionMs
         nowPlaying = first.title
         scope.launch {
-            val result = mpv.play(
+            val result = player.play(
                 items = items,
                 startIndex = startIndex,
                 startPositionMs = resume,
