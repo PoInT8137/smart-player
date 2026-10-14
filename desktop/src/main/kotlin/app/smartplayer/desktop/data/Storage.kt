@@ -68,16 +68,21 @@ class PlaybackHistory(private val file: File = File(AppDirs.root, "history.json"
     }
 }
 
-/** Настройки: адрес TorrServer. */
+/** Настройки: адрес TorrServer и к какому лаунчеру уже подключена Lampa. */
 class Settings(private val file: File = File(AppDirs.root, "settings.json")) {
 
     var torrServerUrl: String
-        get() = read()["torrserver"]?.let { (it as? JsonPrimitive)?.contentOrNull } ?: TorrServerClient.DEFAULT_URL
-        set(value) = write(buildJsonObject { put("torrserver", value.trim().trimEnd('/')) })
+        get() = read().str("torrserver").ifBlank { TorrServerClient.DEFAULT_URL }
+        set(value) = update("torrserver", value.trim().trimEnd('/'))
+
+    /** Путь плеера, который уже прописан в Lampa — чтобы не переписывать её настройки при каждом запуске. */
+    var lampaLinkedPath: String?
+        get() = read().str("lampaLinked").ifBlank { null }
+        set(value) = update("lampaLinked", value.orEmpty())
 
     private fun read(): JsonObject = runCatching { Json.parseToJsonElement(file.readText()).jsonObject }.getOrDefault(JsonObject(emptyMap()))
 
-    private fun write(o: JsonObject) = file.writeText(o.toString())
+    private fun update(key: String, value: String) = file.writeText(JsonObject(read() + (key to JsonPrimitive(value))).toString())
 }
 
 private fun JsonObject.str(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()

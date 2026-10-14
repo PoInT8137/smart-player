@@ -1,5 +1,4 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -45,7 +44,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "SmartPlayer"
-            packageVersion = "0.3.0"
+            packageVersion = "0.3.1"
             // Строки установщика — только латиница: MSI (WiX, кодовая страница 1252) не принимает кириллицу
             description = "Smart Player - video player with TorrServer support"
             vendor = "PoInT8137"
@@ -89,11 +88,64 @@ tasks.matching { it.name == "createDistributable" }.configureEach {
     }
 }
 
-// В установщик (jpackage собирает его заново, не из папки выше) тот же лаунчер mpc-hc64.exe
-// добавляем штатно — через --add-launcher, без ярлыков в меню «Пуск».
-tasks.withType<AbstractJPackageTask>().matching { it.name == "packageExe" || it.name == "packageMsi" }.configureEach {
-    val props = layout.buildDirectory.file("packaging/mpc-hc64.properties").get().asFile
-    props.parentFile.mkdirs()
-    props.writeText("win-shortcut=false\nwin-menu=false\n")
-    freeArgs.addAll("--add-launcher", "mpc-hc64=${props.absolutePath}")
+// Установщик собираем сами — jpackage по готовой папке createDistributable (`--app-image`):
+// в ней уже есть лаунчер mpc-hc64.exe, а свой шаблон WiX (галочка «Запустить Smart Player» в конце,
+// после чего программа сама подключается к Lampa) штатный packageExe передать не даёт —
+// Compose очищает каталог ресурсов перед вызовом jpackage.
+// Сборка: ./gradlew :desktop:packageWindowsInstaller (нужен WiX 3 в PATH)
+val packageWindowsInstaller by tasks.registering(Exec::class) {
+    group = "compose desktop"
+    description = "Установщик Smart Player для Windows с запуском после установки"
+    dependsOn("createDistributable")
+    val app = compose.desktop.application.nativeDistributions
+    val appImage = layout.buildDirectory.dir("compose/binaries/main/app/SmartPlayer")
+    val work = layout.buildDirectory.dir("packaging/installer")
+    val output = layout.buildDirectory.dir("compose/binaries/main/installer")
+    val template = file("packaging/windows/main.wxs")
+    val associations = listOf(
+        "mkv" to "video/x-matroska", "mp4" to "video/mp4", "avi" to "video/x-msvideo", "m4v" to "video/x-m4v",
+        "mov" to "video/quicktime", "webm" to "video/webm", "ts" to "video/mp2t", "m2ts" to "video/mp2t",
+    )
+    inputs.file(template)
+    inputs.dir(appImage)
+    outputs.dir(output)
+
+    executable = File(System.getProperty("java.home"), "bin/jpackage.exe").absolutePath
+    // WiX — тот, что Compose сам скачивает для packageExe (задача :unzipWix → build/wix311)
+    dependsOn(":unzipWix")
+    val wixDir = rootProject.layout.buildDirectory.dir("wix311")
+    doFirst {
+        // В Windows переменная обычно называется «Path» — дописываем в неё же, а не заводим вторую
+        val key = environment.keys.firstOrNull { it.equals("PATH", ignoreCase = true) } ?: "PATH"
+        environment(key, wixDir.get().asFile.absolutePath + File.pathSeparator + environment[key])
+        logger.lifecycle("WiX: ${wixDir.get().asFile} (${File(wixDir.get().asFile, "candle.exe").isFile})")
+    }
+    doFirst {
+        // Все пути — в папке сборки: jpackage не открывает файлы по пути с кириллицей
+        val dir = work.get().asFile.apply { deleteRecursively(); mkdirs() }
+        val resources = File(dir, "resources").apply { mkdirs() }
+        template.copyTo(File(resources, "main.wxs"), overwrite = true)
+        val fa = associations.map { (ext, mime) ->
+            File(dir, "fa-$ext.properties").apply {
+                writeText("mime-type=$mime\nextension=$ext\ndescription=${ext.uppercase()} video - Smart Player\n")
+            }
+        }
+        output.get().asFile.apply { deleteRecursively(); mkdirs() }
+        args(
+            "--type", "exe",
+            "--app-image", appImage.get().asFile.absolutePath,
+            "--dest", output.get().asFile.absolutePath,
+            "--resource-dir", resources.absolutePath,
+            "--name", app.packageName!!,
+            "--app-version", app.packageVersion!!,
+            "--vendor", app.vendor!!,
+            "--description", app.description!!,
+            "--copyright", app.copyright!!,
+            "--icon", layout.buildDirectory.file("packaging/icon.ico").get().asFile.absolutePath,
+            "--win-dir-chooser", "--win-shortcut", "--win-menu",
+            "--win-menu-group", app.windows.menuGroup!!,
+            "--win-upgrade-uuid", app.windows.upgradeUuid!!,
+        )
+        fa.forEach { args("--file-associations", it.absolutePath) }
+    }
 }

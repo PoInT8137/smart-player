@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.smartplayer.desktop.AppModel
+import app.smartplayer.desktop.LampaLink
 import app.smartplayer.desktop.TorrServerState
 import app.smartplayer.desktop.data.HistoryEntry
 import app.tvplayer.torrserver.TorrentInfo
@@ -124,6 +125,8 @@ fun HomeScreen(model: AppModel, onOpenFile: () -> Unit) {
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
+                LampaBanner(model.lampa, onConnect = model::connectLampa)
+
                 if (model.continueWatching.isNotEmpty()) {
                     Shelf("Продолжить просмотр") {
                         items(model.continueWatching, key = { it.uri }) { entry ->
@@ -217,6 +220,8 @@ fun HomeScreen(model: AppModel, onOpenFile: () -> Unit) {
                 )
                 Dialog.Settings -> SettingsDialog(
                     current = model.settings.torrServerUrl,
+                    lampa = model.lampa,
+                    onConnectLampa = model::connectLampa,
                     onSave = {
                         model.settings.torrServerUrl = it
                         model.refreshTorrServer()
@@ -385,6 +390,35 @@ private fun TorrentCard(torrent: TorrentInfo, onActive: () -> Unit, onClick: () 
         PosterImage(torrent.poster, torrent.title, Modifier.fillMaxSize())
         if (torrent.poster == null) {
             Text(torrent.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
+        }
+    }
+}
+
+/** Предложение подключить Lampa, если она открыта и настроить её молча нельзя. */
+@Composable
+private fun LampaBanner(link: LampaLink, onConnect: () -> Unit) {
+    val visible = link is LampaLink.NeedsClose || link is LampaLink.Working || link is LampaLink.Failed
+    val shown = rememberLast(link.takeIf { visible })
+    AnimatedVisibility(visible, enter = fadeIn() + slideInVertically { -it / 3 }, exit = fadeOut()) {
+        Row(
+            Modifier.padding(horizontal = 48.dp).fillMaxWidth()
+                .background(AppColors.Surface.copy(alpha = 0.85f), RoundedCornerShape(16.dp)).padding(22.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Открывать фильмы из Lampa в Smart Player", color = AppColors.TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Caption(
+                    when (shown) {
+                        is LampaLink.Failed -> "Не получилось: ${shown.reason}"
+                        LampaLink.Working -> "Закрываем Lampa, меняем настройку и открываем снова…"
+                        else -> "Lampa сейчас открыта. Нажмите кнопку — она закроется на пару секунд, запомнит Smart Player как плеер для торрентов и откроется снова."
+                    },
+                    lines = 2,
+                )
+            }
+            Spacer(Modifier.width(20.dp))
+            if (shown != LampaLink.Working) PillButton("Подключить к Lampa", onConnect, primary = true, icon = Icons.Filled.Link)
         }
     }
 }

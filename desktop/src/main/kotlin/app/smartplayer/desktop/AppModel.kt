@@ -3,7 +3,9 @@ package app.smartplayer.desktop
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.smartplayer.desktop.data.AppLog
 import app.smartplayer.desktop.data.HistoryEntry
+import app.smartplayer.desktop.data.LampaDesktop
 import app.smartplayer.desktop.data.PlaybackHistory
 import app.smartplayer.desktop.data.Settings
 import app.smartplayer.desktop.player.PlayerWindow
@@ -13,8 +15,21 @@ import app.tvplayer.torrserver.TorrServerClient
 import app.tvplayer.torrserver.TorrentFile
 import app.tvplayer.torrserver.TorrentInfo
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
+
+/** Подключение к Lampa для ПК: чтобы фильмы из неё открывались в Smart Player. */
+sealed interface LampaLink {
+    /** Lampa не найдена или программа запущена не из установленной сборки — нечего настраивать. */
+    data object Unavailable : LampaLink
+    data object Linked : LampaLink
+    /** Lampa открыта — менять её настройки можно только закрыв её. */
+    data object NeedsClose : LampaLink
+    data object Working : LampaLink
+    data class Failed(val reason: String) : LampaLink
+}
 
 sealed interface TorrServerState {
     data object Loading : TorrServerState
@@ -39,7 +54,55 @@ class AppModel(private val scope: CoroutineScope) {
     /** Короткое сообщение внизу экрана. */
     var message by mutableStateOf<String?>(null)
 
+    var lampa by mutableStateOf<LampaLink>(LampaLink.Unavailable)
+        private set
+
     val client: TorrServerClient get() = TorrServerClient(settings.torrServerUrl)
+
+    /**
+     * При запуске: если Lampa ещё не настроена на этот Smart Player — настраиваем сами
+     * (если она закрыта) или предлагаем закрыть её кнопкой.
+     */
+    fun checkLampa() {
+        val player = LampaDesktop.playerPath
+        if (!LampaDesktop.isInstalled || player == null) {
+            lampa = LampaLink.Unavailable
+            return
+        }
+        if (settings.lampaLinkedPath.equals(player.absolutePath, ignoreCase = true)) {
+            lampa = LampaLink.Linked
+            return
+        }
+        scope.launch {
+            lampa = if (withContext(Dispatchers.IO) { LampaDesktop.isRunning() }) LampaLink.NeedsClose else linkLampa(player)
+        }
+    }
+
+    /** Кнопка «Подключить к Lampa»: при необходимости закрывает Lampa и открывает её снова. */
+    fun connectLampa() {
+        val player = LampaDesktop.playerPath ?: return
+        lampa = LampaLink.Working
+        scope.launch {
+            lampa = runCatching {
+                if (withContext(Dispatchers.IO) { LampaDesktop.isRunning() }) {
+                    if (!LampaDesktop.closeConfigureAndRestart(player)) return@runCatching LampaLink.Failed("Lampa не закрылась — закройте её сами и нажмите ещё раз")
+                    settings.lampaLinkedPath = player.absolutePath
+                    LampaLink.Linked
+                } else linkLampa(player)
+            }.getOrElse { LampaLink.Failed(it.message ?: "не удалось изменить настройки Lampa") }
+            if (lampa == LampaLink.Linked) message = "Готово: торренты из Lampa теперь открываются в Smart Player"
+        }
+    }
+
+    private suspend fun linkLampa(player: File): LampaLink = runCatching {
+        withContext(Dispatchers.IO) { LampaDesktop.setExternalPlayer(player) }
+        settings.lampaLinkedPath = player.absolutePath
+        message = "Lampa настроена: торренты из неё открываются в Smart Player"
+        LampaLink.Linked
+    }.getOrElse {
+        AppLog.write("Lampa: не удалось настроить", it)
+        LampaLink.Failed(it.message ?: "не удалось изменить настройки Lampa")
+    }
 
     fun refresh() {
         continueWatching = history.continueWatching()

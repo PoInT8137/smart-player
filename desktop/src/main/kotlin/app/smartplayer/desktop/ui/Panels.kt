@@ -1,5 +1,6 @@
 package app.smartplayer.desktop.ui
 
+import app.smartplayer.desktop.LampaLink
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -261,7 +262,7 @@ fun OpenLinkDialog(
 
 /** Адрес TorrServer с проверкой подключения. */
 @Composable
-fun SettingsDialog(current: String, onSave: (String) -> Unit, onClose: () -> Unit) {
+fun SettingsDialog(current: String, lampa: LampaLink, onConnectLampa: () -> Unit, onSave: (String) -> Unit, onClose: () -> Unit) {
     var url by remember { mutableStateOf(current) }
     var check by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -286,6 +287,24 @@ fun SettingsDialog(current: String, onSave: (String) -> Unit, onClose: () -> Uni
                         .fold({ "✓ Подключено: $it" }, { "Не отвечает: ${it.message ?: "нет связи"}" })
                 }
             })
+        }
+        if (lampa != LampaLink.Unavailable) {
+            Spacer(Modifier.height(26.dp))
+            Text("Lampa для ПК", color = AppColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Caption(
+                when (lampa) {
+                    LampaLink.Linked -> "✓ Торренты из Lampa открываются в Smart Player"
+                    LampaLink.Working -> "Настраиваем Lampa…"
+                    is LampaLink.Failed -> "Не получилось: ${lampa.reason}"
+                    else -> "Lampa открывает фильмы в другом плеере"
+                },
+                lines = 2,
+            )
+            Spacer(Modifier.height(10.dp))
+            if (lampa != LampaLink.Working) {
+                PillButton(if (lampa == LampaLink.Linked) "Подключить заново" else "Подключить к Lampa", onConnectLampa)
+            }
         }
     }
 }

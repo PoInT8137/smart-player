@@ -54,7 +54,10 @@ fun main(args: Array<String>) {
             }
             val scope = rememberCoroutineScope()
             val model = remember { AppModel(scope) }
-            LaunchedEffect(Unit) { model.refresh() }
+            LaunchedEffect(Unit) {
+                model.refresh()
+                model.checkLampa()
+            }
 
             SmartPlayerTheme {
                 HomeScreen(

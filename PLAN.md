@@ -82,6 +82,9 @@ Lampa торренты не качает сама: она отдаёт magnet в
 - [x] Интерфейс плеера как на TV: mpv встроен в окно, поверх — слой Compose (0.3.0)
 - [x] Lampa для ПК: лаунчер mpc-hc64.exe (белый список lampa-desktop), режим MPC-HC
 - [x] Установщик (jpackage + WiX 3, PATH к WiX при сборке), ассоциации видеофайлов
+- [x] 0.3.1: установщик сам подключает Lampa — `gradlew :desktop:packageWindowsInstaller` (jpackage `--app-image`
+      + свой main.wxs с галочкой «Launch Smart Player»); программа пишет `player_nw_path`/`player_torrent`
+      в localStorage Lampa (журнал LevelDB, только пока Lampa закрыта)
 
 ### Этап 4 — медиатека
 - [ ] Файловый браузер: USB, внутренняя память
