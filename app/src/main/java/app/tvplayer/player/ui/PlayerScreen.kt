@@ -5,12 +5,15 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -37,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Subtitles
@@ -86,12 +90,12 @@ import app.tvplayer.torrserver.TorrentInfo
 import app.tvplayer.torrserver.formatSpeed
 import app.tvplayer.torrserver.peersLabel
 import app.tvplayer.ui.AppColors
-import app.tvplayer.ui.Clock
-import app.tvplayer.ui.InfoBadge
-import app.tvplayer.ui.TvButton
 import app.tvplayer.ui.TvFocusable
 import app.tvplayer.ui.safeRequestFocus
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val CONTROLS_TIMEOUT_MS = 3_500L
 private const val SEEK_COMMIT_DELAY_MS = 700L
@@ -426,27 +430,9 @@ fun PlayerScreen(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(120.dp)
-                        .align(Alignment.TopCenter)
-                        .background(Brush.verticalGradient(listOf(Color(0xD9000000), Color.Transparent))),
-                )
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(190.dp)
+                        .height(240.dp)
                         .align(Alignment.BottomCenter)
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000)))),
-                )
-
-                TopInfo(
-                    state = state,
-                    torrent = torrent,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .animateEnterExit(
-                            enter = slideInVertically(spring(dampingRatio = 0.8f)) { -it / 2 },
-                            exit = slideOutVertically(tween(160)) { -it / 2 },
-                        ),
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000), Color(0xE6000000)))),
                 )
 
                 BottomControls(
@@ -482,6 +468,7 @@ fun PlayerScreen(
                     when (tab) {
                         SheetTab.Audio -> audioOptions(player, state.tracks)
                         SheetTab.Subtitles -> subtitleOptions(player, state.tracks)
+                        SheetTab.Quality -> qualityOptions(player, state.tracks)
                         SheetTab.Picture -> resizeModes.mapIndexed { i, (mode, name) ->
                             PanelOption(
                                 name,
@@ -510,6 +497,7 @@ fun PlayerScreen(
                     }
                 },
                 onDismiss = { sheetTab = null },
+                infoFor = { tab -> if (tab == SheetTab.Quality) streamInfo(state, torrent) else null },
             )
         }
 
@@ -573,38 +561,35 @@ fun PlayerScreen(
     }
 }
 
-@Composable
-private fun TopInfo(state: PlayerStateHolder, torrent: TorrentInfo?, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = state.title ?: "",
-            color = AppColors.TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 420.dp),
-        )
-        Spacer(Modifier.width(14.dp))
-        // Бейджи в одну строку с названием — экономим высоту
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (state.itemCount > 1) {
-                InfoBadge("${state.itemIndex + 1} из ${state.itemCount}", accent = true, small = true)
-            }
-            mediaBadges(state.tracks).forEach { InfoBadge(it, small = true) }
-            torrent?.let { InfoBadge("↓ ${formatSpeed(it.downloadSpeed)} · ${peersLabel(it.activePeers)}", small = true) }
-            state.videoFps?.let { fps ->
-                FrameRateMatcher.normalize(fps)?.let { InfoBadge("${FrameRateMatcher.format(it)} fps", small = true) }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Clock(remainingMs = state.remainingMs, big = false)
+/** Технические данные потока для вкладки «Качество»: «1080p · HEVC · HDR10 · 24 fps · AC3 5.1». */
+private fun streamInfo(state: PlayerStateHolder, torrent: TorrentInfo?): String? {
+    val media = mediaBadges(state.tracks).toMutableList()
+    state.videoFps?.let { fps ->
+        FrameRateMatcher.normalize(fps)?.let { media += "${FrameRateMatcher.format(it)} fps" }
     }
+    val lines = listOfNotNull(
+        media.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.let { "Сейчас: $it" },
+        torrent?.let { "Торрент: ↓ ${formatSpeed(it.downloadSpeed)} · ${peersLabel(it.activePeers)}" },
+    )
+    return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+}
+
+/** Время и момент окончания одной строкой: «21:05 · конец в 23:41». */
+@Composable
+private fun ClockLine(remainingMs: Long) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(5_000)
+        }
+    }
+    val fmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val text = buildString {
+        append(fmt.format(Date(now)))
+        if (remainingMs > 0) append(" · конец в ").append(fmt.format(Date(now + remainingMs)))
+    }
+    Text(text, color = AppColors.TextSecondary, fontSize = 14.sp)
 }
 
 @Composable
@@ -627,6 +612,30 @@ private fun BottomControls(
             .fillMaxWidth()
             .padding(start = 40.dp, end = 40.dp, bottom = 22.dp),
     ) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = state.title ?: "",
+                    color = AppColors.TextPrimary,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (state.itemCount > 1) {
+                    Text(
+                        "  ·  ${state.itemIndex + 1} из ${state.itemCount}",
+                        color = AppColors.TextSecondary,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Spacer(Modifier.width(24.dp))
+            ClockLine(remainingMs = state.remainingMs)
+        }
+
         // Время по бокам шкалы — одна строка вместо двух
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
@@ -672,44 +681,93 @@ private fun BottomControls(
                 KeyHint("OK", if (state.playWhenReady) "пауза" else "смотреть")
                 KeyHint("◀ ▶", "перемотка")
             }
-            val chip = Modifier.height(46.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (state.itemCount > 1) {
-                    TvButton(
-                        "Серии",
+                    ControlButton(
                         icon = Icons.Filled.VideoLibrary,
+                        label = "Серии",
                         value = "${state.itemIndex + 1} из ${state.itemCount}",
                         onClick = onOpenEpisodes,
-                        compact = true,
-                        modifier = chip,
                     )
                 }
-                TvButton(
-                    "Звук",
+                ControlButton(
                     icon = Icons.Filled.Audiotrack,
+                    label = "Звук",
                     value = currentAudioSummary(state.tracks),
                     onClick = { onOpenSheet(SheetTab.Audio) },
-                    compact = true,
-                    modifier = chip
-                        .widthIn(max = 200.dp)
-                        .focusRequester(audioFocus),
+                    modifier = Modifier.focusRequester(audioFocus),
                 )
-                TvButton(
-                    "Субтитры",
+                ControlButton(
                     icon = Icons.Filled.Subtitles,
+                    label = "Субтитры",
                     value = currentSubtitleSummary(state.tracks),
                     onClick = { onOpenSheet(SheetTab.Subtitles) },
-                    compact = true,
-                    modifier = chip.widthIn(max = 170.dp),
                 )
-                TvButton(
-                    "Настройки",
+                ControlButton(
+                    icon = Icons.Filled.HighQuality,
+                    label = "Качество",
+                    value = currentQualitySummary(state.player, state.tracks),
+                    onClick = { onOpenSheet(SheetTab.Quality) },
+                )
+                ControlButton(
                     icon = Icons.Filled.Tune,
-                    value = if (state.speed != 1f) "Скорость ${speedName(state.speed)}" else null,
+                    label = "Настройки",
+                    value = if (state.speed != 1f) "Скорость ${speedName(state.speed)}" else "Картинка, скорость",
                     onClick = { onOpenSheet(SheetTab.Picture) },
-                    compact = true,
-                    modifier = chip,
                 )
+            }
+        }
+    }
+}
+
+/** Круглая кнопка-иконка; в фокусе раскрывается в «таблетку» с подписью и текущим значением. */
+@Composable
+private fun ControlButton(
+    icon: ImageVector,
+    label: String,
+    value: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TvFocusable(
+        onClick = onClick,
+        modifier = modifier.height(46.dp),
+        shape = RoundedCornerShape(50),
+        focusedScale = 1.06f,
+        background = AppColors.GlassLight,
+    ) { focused ->
+        val color = if (focused) AppColors.OnFocused else AppColors.TextPrimary
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
+            AnimatedVisibility(
+                visible = focused,
+                enter = expandHorizontally(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkHorizontally(tween(140)) + fadeOut(tween(100)),
+            ) {
+                Column(Modifier.padding(start = 9.dp, end = 7.dp)) {
+                    Text(
+                        label,
+                        color = color,
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                    if (value != null) {
+                        Text(
+                            value,
+                            color = color.copy(alpha = 0.65f),
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 200.dp),
+                        )
+                    }
+                }
             }
         }
     }

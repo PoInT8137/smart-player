@@ -85,6 +85,8 @@ Lampa торренты не качает сама: она отдаёт magnet в
 - [x] 0.3.1: установщик сам подключает Lampa — `gradlew :desktop:packageWindowsInstaller` (jpackage `--app-image`
       + свой main.wxs с галочкой «Launch Smart Player»); программа пишет `player_nw_path`/`player_torrent`
       в localStorage Lampa (журнал LevelDB, только пока Lampa закрыта)
+- [x] 0.3.2: минималистичный плеер (TV и ПК) — без верхней панели, ряд иконок, раскрывающихся в фокусе;
+      меню «Качество»: HLS/DASH-варианты (на TV — с «Авто», на ПК — editions mpv)
 
 ### Этап 4 — медиатека
 - [ ] Файловый браузер: USB, внутренняя память

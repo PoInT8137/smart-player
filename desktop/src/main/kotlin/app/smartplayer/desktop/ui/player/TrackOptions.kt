@@ -1,5 +1,6 @@
 package app.smartplayer.desktop.ui.player
 
+import app.smartplayer.desktop.player.MpvEdition
 import app.smartplayer.desktop.player.MpvEngine
 import app.smartplayer.desktop.player.MpvTrack
 import java.util.Locale
@@ -48,17 +49,72 @@ fun currentAudioSummary(engine: MpvEngine): String? = engine.tracks.firstOrNull 
 fun currentSubtitleSummary(engine: MpvEngine): String =
     engine.tracks.firstOrNull { it.type == "sub" && it.selected }?.let { trackTitle(it, "Вкл") } ?: "Выкл"
 
-/** Бейджи для верхней панели: разрешение, кодек, HDR, звук. */
+/** «4K», «1080p», «720p»… по размеру кадра; null, если размер неизвестен. */
+private fun resolutionName(width: Int, height: Int): String? {
+    val w = maxOf(width, height)
+    val h = minOf(width, height)
+    return when {
+        w >= 3800 -> "4K"
+        w >= 2500 || h >= 1400 -> "1440p"
+        w >= 1900 || h >= 1000 -> "1080p"
+        w >= 1260 || h >= 700 -> "720p"
+        h > 0 -> "${h}p"
+        else -> null
+    }
+}
+
+private fun bitrateName(bitrate: Int): String? =
+    bitrate.takeIf { it > 0 }?.let { String.format(ru, "%.1f Мбит/с", it / 1_000_000f) }
+
+/**
+ * Разрешения видео. Несколько вариантов бывает у HLS-потоков (новый mpv отдаёт их как editions,
+ * старый — как видеодорожки); у обычного файла — один пункт с его разрешением.
+ */
+fun qualityOptions(engine: MpvEngine): List<PanelOption> {
+    if (engine.editions.size > 1) {
+        return engine.editions
+            .sortedWith(compareByDescending<MpvEdition> { minOf(it.width, it.height) }.thenByDescending { it.bitrate })
+            .map { e ->
+                PanelOption(
+                    title = resolutionName(e.width, e.height) ?: "Вариант ${e.id + 1}",
+                    subtitle = bitrateName(e.bitrate),
+                    selected = e.id == engine.currentEdition,
+                    onSelect = { engine.setEdition(e.id) },
+                )
+            }
+    }
+    val videos = engine.tracks.filter { it.type == "video" && !it.albumArt }
+        .sortedWith(compareByDescending<MpvTrack> { minOf(it.width, it.height) }.thenByDescending { it.bitrate })
+    if (videos.size <= 1) {
+        return videos.map {
+            PanelOption(
+                title = resolutionName(engine.videoWidth, engine.videoHeight) ?: "Исходное",
+                subtitle = "Источник отдаёт видео только в этом качестве",
+                selected = true,
+                onSelect = {},
+            )
+        }
+    }
+    return videos.mapIndexed { i, t ->
+        PanelOption(
+            title = resolutionName(t.width, t.height) ?: trackTitle(t, "Вариант ${i + 1}"),
+            subtitle = listOfNotNull(
+                bitrateName(t.bitrate),
+                codecName(t.codec),
+            ).joinToString(" · ").ifEmpty { null },
+            selected = t.selected,
+            onSelect = { engine.setVideo(t.id) },
+        )
+    }
+}
+
+/** Текущее разрешение для кнопки «Качество». */
+fun currentQualitySummary(engine: MpvEngine): String? = resolutionName(engine.videoWidth, engine.videoHeight)
+
+/** Техническая информация о потоке: разрешение, кодек, HDR, звук, fps. */
 fun mediaBadges(engine: MpvEngine): List<String> {
     val badges = mutableListOf<String>()
-    val w = maxOf(engine.videoWidth, engine.videoHeight)
-    val h = minOf(engine.videoWidth, engine.videoHeight)
-    when {
-        w >= 3800 -> badges += "4K"
-        w >= 1900 || h >= 1000 -> badges += "1080p"
-        w >= 1260 || h >= 700 -> badges += "720p"
-        h > 0 -> badges += "${h}p"
-    }
+    resolutionName(engine.videoWidth, engine.videoHeight)?.let { badges += it }
     engine.tracks.firstOrNull { it.type == "video" && it.selected }?.codec?.let { codecName(it) }?.let { badges += it }
     engine.hdr?.let { badges += it }
     engine.tracks.firstOrNull { it.type == "audio" && it.selected }?.let { a ->

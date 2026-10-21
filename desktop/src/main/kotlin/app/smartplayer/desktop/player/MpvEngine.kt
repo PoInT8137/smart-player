@@ -38,7 +38,21 @@ data class MpvTrack(
     val channels: Int?,
     val selected: Boolean,
     val forced: Boolean,
+    /** Для видео: размер кадра и битрейт варианта HLS (0 — неизвестно). */
+    val width: Int = 0,
+    val height: Int = 0,
+    val bitrate: Int = 0,
+    /** Обложка из файла, а не видео. */
+    val albumArt: Boolean = false,
 )
+
+/**
+ * Вариант качества HLS-потока. Новый mpv показывает варианты не дорожками, а editions
+ * с заголовком вида «Bitrate: 6.222 Mbps (h264 [High] 1920x1080 60 fps ...)».
+ */
+data class MpvEdition(val id: Int, val width: Int, val height: Int, val bitrate: Int)
+
+private val resolutionRegex = Regex("""(\d{3,4})x(\d{3,4})""")
 
 /**
  * Встроенный mpv: рисует видео в окно [wid], интерфейс — наш (Compose поверх).
@@ -69,6 +83,9 @@ class MpvEngine(
     var mediaTitle by mutableStateOf<String?>(null); private set
     var itemIndex by mutableIntStateOf(startIndex); private set
     var tracks by mutableStateOf<List<MpvTrack>>(emptyList()); private set
+    /** Варианты качества HLS; пусто у обычных файлов. */
+    var editions by mutableStateOf<List<MpvEdition>>(emptyList()); private set
+    var currentEdition by mutableIntStateOf(-1); private set
     var speed by mutableFloatStateOf(1f); private set
     var volume by mutableIntStateOf(100); private set
     var videoWidth by mutableIntStateOf(0); private set
@@ -186,6 +203,8 @@ class MpvEngine(
                 }
             }
             "track-list" -> tracks = (data as? JsonArray)?.mapNotNull { parseTrack(it) }.orEmpty()
+            "edition-list" -> editions = (data as? JsonArray)?.mapNotNull { parseEdition(it) }.orEmpty()
+            "current-edition" -> currentEdition = p?.intOrNull ?: -1
             "speed" -> speed = (p?.doubleOrNull ?: 1.0).toFloat()
             "volume" -> volume = (p?.doubleOrNull ?: 100.0).toInt()
             "video-params" -> (data as? JsonObject).let { vp ->
@@ -205,6 +224,16 @@ class MpvEngine(
         }
     }
 
+    /** Только editions с размером кадра в заголовке — главы-«редакции» MKV сюда не попадают. */
+    private fun parseEdition(el: JsonElement): MpvEdition? {
+        val o = el as? JsonObject ?: return null
+        val id = (o["id"] as? JsonPrimitive)?.intOrNull ?: return null
+        val title = (o["title"] as? JsonPrimitive)?.contentOrNull ?: return null
+        val size = resolutionRegex.find(title) ?: return null
+        val bitrate = ((o["metadata"] as? JsonObject)?.get("variant_bitrate") as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 0
+        return MpvEdition(id, size.groupValues[1].toInt(), size.groupValues[2].toInt(), bitrate)
+    }
+
     private fun parseTrack(el: JsonElement): MpvTrack? {
         val o = el as? JsonObject ?: return null
         fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
@@ -218,6 +247,10 @@ class MpvEngine(
             channels = (o["demux-channel-count"] as? JsonPrimitive)?.intOrNull,
             selected = b("selected"),
             forced = b("forced"),
+            width = (o["demux-w"] as? JsonPrimitive)?.intOrNull ?: 0,
+            height = (o["demux-h"] as? JsonPrimitive)?.intOrNull ?: 0,
+            bitrate = (o["hls-bitrate"] as? JsonPrimitive)?.intOrNull ?: 0,
+            albumArt = b("albumart"),
         )
     }
 
@@ -257,6 +290,8 @@ class MpvEngine(
     fun pausePlayback(value: Boolean) = command("set", "pause", if (value) "yes" else "no")
     fun seekTo(ms: Long) = command("seek", ms / 1000.0, "absolute+exact")
     fun setAudio(id: Int) = command("set", "aid", id.toString())
+    fun setVideo(id: Int) = command("set", "vid", id.toString())
+    fun setEdition(id: Int) = command("set", "edition", id.toString())
     fun setSubtitle(id: Int?) = command("set", "sid", id?.toString() ?: "no")
     fun changeSpeed(value: Float) = command("set", "speed", value.toString())
     fun addVolume(delta: Int) = command("add", "volume", delta)
@@ -296,7 +331,7 @@ class MpvEngine(
     companion object {
         private val OBSERVED = listOf(
             "pause", "paused-for-cache", "time-pos", "duration", "demuxer-cache-time", "media-title",
-            "playlist-pos", "track-list", "speed", "volume", "video-params", "video-codec", "container-fps",
+            "playlist-pos", "track-list", "edition-list", "current-edition", "speed", "volume", "video-params", "video-codec", "container-fps",
             "path", "eof-reached", "seeking",
         )
     }

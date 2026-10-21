@@ -54,26 +54,34 @@ import app.smartplayer.desktop.ui.AppColors
 import app.smartplayer.desktop.ui.CardArt
 import app.smartplayer.desktop.ui.Interactive
 
-enum class SheetTab(val title: String) { Audio("Звук"), Subtitles("Субтитры"), Picture("Картинка"), Speed("Скорость") }
+enum class SheetTab(val title: String) {
+    Audio("Звук"), Subtitles("Субтитры"), Quality("Качество"), Picture("Картинка"), Speed("Скорость"),
+}
 
 /** Не даём клику «провалиться» сквозь панель на видео (там клик — пауза). */
 private fun Modifier.swallowClicks() = clickable(interactionSource = MutableInteractionSource(), indication = null) {}
 
 /** Панель настроек справа. Вкладку можно выбрать мышью или стрелками. */
 @Composable
-fun SettingsSheet(initialTab: SheetTab, optionsFor: (SheetTab) -> List<PanelOption>, onDismiss: () -> Unit) {
+fun SettingsSheet(
+    initialTab: SheetTab,
+    optionsFor: (SheetTab) -> List<PanelOption>,
+    onDismiss: () -> Unit,
+    /** Пояснение над списком вкладки, например технические данные потока. */
+    infoFor: (SheetTab) -> String? = { null },
+) {
     var tab by remember { mutableStateOf(initialTab) }
     var initialFocusDone by remember { mutableStateOf(false) }
 
     Column(
-        Modifier.fillMaxHeight().width(520.dp)
+        Modifier.fillMaxHeight().width(580.dp)
             .background(Brush.horizontalGradient(listOf(Color(0xE6101217), Color(0xFA101217))))
             .swallowClicks()
             .padding(top = 40.dp, start = 32.dp, end = 32.dp),
     ) {
         Text("НАСТРОЙКИ", color = AppColors.TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             SheetTab.entries.forEach { t -> SheetTabItem(t.title, selected = t == tab, onSelect = { tab = t }) }
         }
         Spacer(Modifier.height(20.dp))
@@ -85,12 +93,20 @@ fun SettingsSheet(initialTab: SheetTab, optionsFor: (SheetTab) -> List<PanelOpti
             },
             label = "sheetTab",
         ) { current ->
-            OptionList(
-                options = optionsFor(current),
-                requestFocus = !initialFocusDone && current == initialTab,
-                onFocusRequested = { initialFocusDone = true },
-                onDismiss = onDismiss,
-            )
+            Column {
+                infoFor(current)?.let {
+                    Text(
+                        it, color = AppColors.TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
+                        modifier = Modifier.padding(start = 18.dp, end = 8.dp, bottom = 14.dp),
+                    )
+                }
+                OptionList(
+                    options = optionsFor(current),
+                    requestFocus = !initialFocusDone && current == initialTab,
+                    onFocusRequested = { initialFocusDone = true },
+                    onDismiss = onDismiss,
+                )
+            }
         }
     }
 }
@@ -113,8 +129,8 @@ private fun SheetTabItem(title: String, selected: Boolean, onSelect: () -> Unit)
             },
             label = "tabColor",
         )
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = color, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(title, color = color, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Spacer(Modifier.height(4.dp))
             Box(Modifier.width(underline).height(3.dp).background(if (active) AppColors.OnFocused else AppColors.Accent, RoundedCornerShape(2.dp)))
         }

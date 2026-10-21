@@ -102,19 +102,98 @@ fun currentAudioSummary(tracks: Tracks): String? = selectedFormat(tracks, C.TRAC
 fun currentSubtitleSummary(tracks: Tracks): String =
     selectedFormat(tracks, C.TRACK_TYPE_TEXT)?.let { trackTitle(it, "Вкл") } ?: "Выкл"
 
-/** Бейджи для верхней панели: разрешение, кодек, HDR, звук. */
+/** «4K», «1080p», «720p»… по размеру кадра; null, если размер неизвестен. */
+private fun resolutionName(v: Format): String? {
+    val h = minOf(v.height, v.width).takeIf { it > 0 }
+    val w = maxOf(v.height, v.width)
+    return when {
+        w >= 3800 -> "4K"
+        h != null && h >= 1400 || w >= 2500 -> "1440p"
+        h != null && h >= 1000 || w >= 1900 -> "1080p"
+        h != null && h >= 700 || w >= 1260 -> "720p"
+        h != null -> "${h}p"
+        else -> null
+    }
+}
+
+private data class VideoVariant(val group: Tracks.Group, val index: Int, val format: Format)
+
+private fun videoVariants(tracks: Tracks): List<VideoVariant> =
+    tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+        .flatMap { group ->
+            (0 until group.length).filter { group.isTrackSupported(it) }
+                .map { VideoVariant(group, it, group.getTrackFormat(it)) }
+        }
+        .sortedWith(
+            compareByDescending<VideoVariant> { minOf(it.format.width, it.format.height) }
+                .thenByDescending { it.format.bitrate },
+        )
+
+private fun isVideoOverridden(player: Player): Boolean =
+    player.trackSelectionParameters.overrides.keys.any { it.type == C.TRACK_TYPE_VIDEO }
+
+private fun bitrateName(bitrate: Int): String? =
+    bitrate.takeIf { it > 0 }?.let { String.format(ruLocale, "%.1f Мбит/с", it / 1_000_000f) }
+
+/**
+ * Разрешения видео. Выбор есть только у потоков с несколькими вариантами (HLS/DASH);
+ * у обычного файла — один пункт с его разрешением.
+ */
+fun qualityOptions(player: Player, tracks: Tracks): List<PanelOption> {
+    val variants = videoVariants(tracks)
+    if (variants.size <= 1) {
+        return variants.map { v ->
+            PanelOption(
+                title = resolutionName(v.format) ?: "Исходное",
+                subtitle = "Источник отдаёт видео только в этом качестве",
+                selected = true,
+                onSelect = {},
+            )
+        }
+    }
+    val overridden = isVideoOverridden(player)
+    val current = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let(::resolutionName)
+    val auto = PanelOption(
+        title = "Авто",
+        subtitle = listOfNotNull("По скорости сети", current?.takeIf { !overridden }?.let { "сейчас $it" })
+            .joinToString(" · "),
+        selected = !overridden,
+        onSelect = {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                .build()
+        },
+    )
+    return listOf(auto) + variants.map { v ->
+        PanelOption(
+            title = resolutionName(v.format) ?: "Вариант ${v.index + 1}",
+            subtitle = bitrateName(v.format.bitrate),
+            selected = overridden && v.group.isTrackSelected(v.index),
+            onSelect = {
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(TrackSelectionOverride(v.group.mediaTrackGroup, v.index))
+                    .build()
+            },
+        )
+    }
+}
+
+/** Текущее качество для кнопки: «Авто · 1080p» или «720p». */
+fun currentQualitySummary(player: Player, tracks: Tracks): String? {
+    val current = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let(::resolutionName)
+    val canSwitch = videoVariants(tracks).size > 1
+    return when {
+        canSwitch && !isVideoOverridden(player) -> listOfNotNull("Авто", current).joinToString(" · ")
+        else -> current
+    }
+}
+
+/** Техническая информация о потоке: разрешение, кодек, HDR, звук. */
 @OptIn(UnstableApi::class)
 fun mediaBadges(tracks: Tracks): List<String> {
     val badges = mutableListOf<String>()
     selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let { v ->
-        val h = minOf(v.height, v.width).takeIf { it > 0 }
-        val w = maxOf(v.height, v.width)
-        when {
-            w >= 3800 -> badges += "4K"
-            h != null && h >= 1000 || w >= 1900 -> badges += "1080p"
-            h != null && h >= 700 || w >= 1260 -> badges += "720p"
-            h != null -> badges += "${h}p"
-        }
+        resolutionName(v)?.let { badges += it }
         when (v.sampleMimeType) {
             MimeTypes.VIDEO_H265 -> badges += "HEVC"
             MimeTypes.VIDEO_H264 -> badges += "H.264"

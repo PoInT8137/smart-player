@@ -44,7 +44,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "SmartPlayer"
-            packageVersion = "0.3.1"
+            packageVersion = "0.3.2"
             // Строки установщика — только латиница: MSI (WiX, кодовая страница 1252) не принимает кириллицу
             description = "Smart Player - video player with TorrServer support"
             vendor = "PoInT8137"

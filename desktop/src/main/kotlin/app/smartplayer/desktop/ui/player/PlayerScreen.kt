@@ -1,12 +1,15 @@
 package app.smartplayer.desktop.ui.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -40,6 +43,7 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Subtitles
@@ -88,7 +92,6 @@ import androidx.compose.ui.unit.sp
 import app.smartplayer.desktop.player.MpvEngine
 import app.smartplayer.desktop.player.ResizeMode
 import app.smartplayer.desktop.ui.AppColors
-import app.smartplayer.desktop.ui.Clock
 import app.smartplayer.desktop.ui.Interactive
 import app.tvplayer.torrserver.TorrServerClient
 import app.tvplayer.torrserver.TorrentInfo
@@ -98,6 +101,8 @@ import kotlinx.coroutines.delay
 import java.awt.Point
 import java.awt.Toolkit
 import java.awt.image.BufferedImage
+import java.text.SimpleDateFormat
+import java.util.Date
 
 private const val CONTROLS_TIMEOUT_MS = 3_500L
 private const val SEEK_COMMIT_DELAY_MS = 700L
@@ -256,8 +261,12 @@ fun PlayerScreen(
                 if (dy != 0f) changeVolume(if (dy < 0) 5 else -5)
             }
             .pointerInput(Unit) {
+                // onTap приходит с задержкой (ждём двойной клик) — к этому времени клик по пункту
+                // меню уже закрыл панель. Решаем по состоянию на момент нажатия, иначе выбор ставит паузу.
+                var pressedOverOverlay = false
                 detectTapGestures(
-                    onTap = { if (sheetTab == null && !episodesOpen) togglePlay() else { sheetTab = null; episodesOpen = false } },
+                    onPress = { pressedOverOverlay = sheetTab != null || episodesOpen },
+                    onTap = { if (!pressedOverOverlay) togglePlay() else { sheetTab = null; episodesOpen = false } },
                     onDoubleTap = { onToggleFullscreen() },
                 )
             }
@@ -357,12 +366,12 @@ fun PlayerScreen(
 
         AnimatedVisibility(visible = controlsVisible && !overlayOpen && engine.error == null, enter = fadeIn(tween(220)), exit = fadeOut(tween(160))) {
             Box(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(120.dp).align(Alignment.TopCenter).background(Brush.verticalGradient(listOf(Color(0xD9000000), Color.Transparent))))
-                Box(Modifier.fillMaxWidth().height(190.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000)))))
+                Box(
+                    Modifier.fillMaxWidth().height(240.dp).align(Alignment.BottomCenter)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000), Color(0xE6000000)))),
+                )
 
-                TopInfo(
-                    engine = engine,
-                    torrent = torrent,
+                TopBar(
                     fullscreen = fullscreen,
                     onToggleFullscreen = onToggleFullscreen,
                     onClose = onExit,
@@ -404,6 +413,7 @@ fun PlayerScreen(
                     when (tab) {
                         SheetTab.Audio -> audioOptions(engine)
                         SheetTab.Subtitles -> subtitleOptions(engine)
+                        SheetTab.Quality -> qualityOptions(engine)
                         SheetTab.Picture -> ResizeMode.entries.mapIndexed { i, mode ->
                             PanelOption(mode.title, selected = resizeMode == mode, header = "Размер изображения".takeIf { i == 0 }, onSelect = {
                                 resizeMode = mode
@@ -414,6 +424,7 @@ fun PlayerScreen(
                     }
                 },
                 onDismiss = { sheetTab = null },
+                infoFor = { tab -> if (tab == SheetTab.Quality) streamInfo(engine, torrent) else null },
             )
         }
 
@@ -448,10 +459,18 @@ fun PlayerScreen(
     }
 }
 
+/** Техническая информация для вкладки «Качество»: «Сейчас: 1080p · HEVC · AC3 5.1 · 24 fps». */
+private fun streamInfo(engine: MpvEngine, torrent: TorrentInfo?): String? {
+    val lines = listOfNotNull(
+        mediaBadges(engine).takeIf { it.isNotEmpty() }?.joinToString(" · ")?.let { "Сейчас: $it" },
+        torrent?.let { "Торрент: ↓ ${formatSpeed(it.downloadSpeed)} · ${peersLabel(it.activePeers)}" },
+    )
+    return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+}
+
+/** Верх без текста: только кнопки окна. За пустое место окно можно перетаскивать. */
 @Composable
-private fun TopInfo(
-    engine: MpvEngine,
-    torrent: TorrentInfo?,
+private fun TopBar(
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
     onClose: () -> Unit,
@@ -460,37 +479,32 @@ private fun TopInfo(
 ) {
     Row(
         modifier.fillMaxWidth()
-            // В окне за верхнюю панель окно можно перетаскивать
             .pointerInput(Unit) { detectDragGestures { change, drag -> change.consume(); onDrag(drag.x, drag.y) } }
-            .padding(horizontal = 40.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 24.dp, vertical = 18.dp),
+        horizontalArrangement = Arrangement.End,
     ) {
-        Text(
-            engine.mediaTitle ?: engine.currentItem.title, color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 420.dp),
-        )
-        Spacer(Modifier.width(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (engine.itemCount > 1) InfoBadge("${engine.itemIndex + 1} из ${engine.itemCount}", accent = true)
-            mediaBadges(engine).forEach { InfoBadge(it) }
-            torrent?.let { InfoBadge("↓ ${formatSpeed(it.downloadSpeed)} · ${peersLabel(it.activePeers)}") }
-        }
-        Spacer(Modifier.weight(1f))
-        Column(horizontalAlignment = Alignment.End) {
-            Clock()
-            if (engine.durationMs > 0) {
-                val remaining = ((engine.durationMs - engine.positionMs) / engine.speed).toLong()
-                Text(
-                    "Конец в " + java.text.SimpleDateFormat("HH:mm").format(java.util.Date(System.currentTimeMillis() + remaining)),
-                    color = AppColors.TextSecondary, fontSize = 13.sp,
-                )
-            }
-        }
-        Spacer(Modifier.width(16.dp))
         RoundIconButton(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, "Полный экран (F)", onToggleFullscreen)
         Spacer(Modifier.width(8.dp))
         RoundIconButton(Icons.Filled.Close, "Закрыть", onClose)
     }
+}
+
+/** Время и момент окончания одной строкой: «21:05 · конец в 23:41». */
+@Composable
+private fun ClockLine(remainingMs: Long) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(5_000)
+        }
+    }
+    val fmt = remember { SimpleDateFormat("HH:mm") }
+    val text = buildString {
+        append(fmt.format(Date(now)))
+        if (remainingMs > 0) append(" · конец в ").append(fmt.format(Date(now + remainingMs)))
+    }
+    Text(text, color = AppColors.TextSecondary, fontSize = 14.sp)
 }
 
 @Composable
@@ -509,6 +523,21 @@ private fun BottomControls(
 ) {
     val shownPosition = pendingSeekMs ?: engine.positionMs
     Column(modifier.fillMaxWidth().padding(start = 40.dp, end = 40.dp, bottom = 22.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+                Text(
+                    engine.mediaTitle ?: engine.currentItem.title, color = AppColors.TextPrimary, fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (engine.itemCount > 1) {
+                    Text("  ·  ${engine.itemIndex + 1} из ${engine.itemCount}", color = AppColors.TextSecondary, fontSize = 15.sp, maxLines = 1)
+                }
+            }
+            Spacer(Modifier.width(24.dp))
+            val remaining = if (engine.durationMs > 0) ((engine.durationMs - engine.positionMs) / engine.speed).toLong() else 0L
+            ClockLine(remaining)
+        }
         Row(verticalAlignment = Alignment.Bottom) {
             Text(formatTime(shownPosition), color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(bottom = 3.dp))
             Timeline(
@@ -536,12 +565,16 @@ private fun BottomControls(
                 KeyHint("◀ ▶", "перемотка")
                 KeyHint("Колесо", "громкость")
             }
-            val chip = Modifier.height(46.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (engine.itemCount > 1) ChipButton("Серии", Icons.Filled.VideoLibrary, "${engine.itemIndex + 1} из ${engine.itemCount}", onOpenEpisodes, chip)
-                ChipButton("Звук", Icons.Filled.Audiotrack, currentAudioSummary(engine), { onOpenSheet(SheetTab.Audio) }, chip.widthIn(max = 220.dp))
-                ChipButton("Субтитры", Icons.Filled.Subtitles, currentSubtitleSummary(engine), { onOpenSheet(SheetTab.Subtitles) }, chip.widthIn(max = 190.dp))
-                ChipButton("Настройки", Icons.Filled.Tune, if (engine.speed != 1f) "Скорость ${speedName(engine.speed)}" else null, { onOpenSheet(SheetTab.Picture) }, chip)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (engine.itemCount > 1) ControlButton(Icons.Filled.VideoLibrary, "Серии", "${engine.itemIndex + 1} из ${engine.itemCount}", onOpenEpisodes)
+                ControlButton(Icons.Filled.Audiotrack, "Звук", currentAudioSummary(engine), { onOpenSheet(SheetTab.Audio) })
+                ControlButton(Icons.Filled.Subtitles, "Субтитры", currentSubtitleSummary(engine), { onOpenSheet(SheetTab.Subtitles) })
+                ControlButton(Icons.Filled.HighQuality, "Качество", currentQualitySummary(engine), { onOpenSheet(SheetTab.Quality) })
+                ControlButton(
+                    Icons.Filled.Tune, "Настройки",
+                    if (engine.speed != 1f) "Скорость ${speedName(engine.speed)}" else "Картинка, скорость",
+                    { onOpenSheet(SheetTab.Picture) },
+                )
             }
         }
     }
@@ -623,17 +656,27 @@ private fun RoundIconButton(icon: ImageVector, description: String, onClick: () 
     }
 }
 
-/** Кнопка с подписью и текущим значением: «Звук · Русский · AC3 · 5.1». */
+/** Круглая кнопка-иконка; при наведении или фокусе раскрывается в «таблетку» с подписью и значением. */
 @Composable
-private fun ChipButton(text: String, icon: ImageVector, value: String?, onClick: () -> Unit, modifier: Modifier) {
-    Interactive(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(50), activeScale = 1.08f, background = AppColors.GlassLight) { active ->
+private fun ControlButton(icon: ImageVector, label: String, value: String?, onClick: () -> Unit) {
+    Interactive(onClick = onClick, modifier = Modifier.height(46.dp), shape = RoundedCornerShape(50), activeScale = 1.06f, background = AppColors.GlassLight) { active ->
         val color = if (active) AppColors.OnFocused else AppColors.TextPrimary
-        Row(Modifier.padding(start = 14.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text(text, color = color, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                if (value != null) Text(value, color = color.copy(alpha = 0.65f), fontSize = 10.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, label, tint = color, modifier = Modifier.size(24.dp))
+            AnimatedVisibility(
+                visible = active,
+                enter = expandHorizontally(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkHorizontally(tween(140)) + fadeOut(tween(100)),
+            ) {
+                Column(Modifier.padding(start = 9.dp, end = 7.dp)) {
+                    Text(label, color = color, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    if (value != null) {
+                        Text(
+                            value, color = color.copy(alpha = 0.65f), fontSize = 11.sp, lineHeight = 13.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp),
+                        )
+                    }
+                }
             }
         }
     }
