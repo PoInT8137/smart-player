@@ -291,7 +291,9 @@ class MpvEngine(
     fun seekTo(ms: Long) = command("seek", ms / 1000.0, "absolute+exact")
     fun setAudio(id: Int) = command("set", "aid", id.toString())
     fun setVideo(id: Int) = command("set", "vid", id.toString())
-    fun setEdition(id: Int) = command("set", "edition", id.toString())
+    // Только для текущего файла: иначе mpv перенесёт номер варианта на следующую серию,
+    // где он может означать другое разрешение (или другую версию фильма в MKV)
+    fun setEdition(id: Int) = command("set", "file-local-options/edition", id.toString())
     fun setSubtitle(id: Int?) = command("set", "sid", id?.toString() ?: "no")
     fun changeSpeed(value: Float) = command("set", "speed", value.toString())
     fun addVolume(delta: Int) = command("add", "volume", delta)

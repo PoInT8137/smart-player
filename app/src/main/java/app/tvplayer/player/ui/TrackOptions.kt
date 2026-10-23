@@ -129,8 +129,11 @@ private fun videoVariants(tracks: Tracks): List<VideoVariant> =
                 .thenByDescending { it.format.bitrate },
         )
 
-private fun isVideoOverridden(player: Player): Boolean =
-    player.trackSelectionParameters.overrides.keys.any { it.type == C.TRACK_TYPE_VIDEO }
+/** Выбрано ли разрешение вручную для текущего файла (переопределения прошлой серии не в счёт). */
+private fun isVideoOverridden(player: Player, tracks: Tracks): Boolean {
+    val current = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }.map { it.mediaTrackGroup }
+    return player.trackSelectionParameters.overrides.keys.any { it.type == C.TRACK_TYPE_VIDEO && it in current }
+}
 
 private fun bitrateName(bitrate: Int): String? =
     bitrate.takeIf { it > 0 }?.let { String.format(ruLocale, "%.1f Мбит/с", it / 1_000_000f) }
@@ -151,7 +154,7 @@ fun qualityOptions(player: Player, tracks: Tracks): List<PanelOption> {
             )
         }
     }
-    val overridden = isVideoOverridden(player)
+    val overridden = isVideoOverridden(player, tracks)
     val current = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let(::resolutionName)
     val auto = PanelOption(
         title = "Авто",
@@ -183,7 +186,7 @@ fun currentQualitySummary(player: Player, tracks: Tracks): String? {
     val current = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)?.let(::resolutionName)
     val canSwitch = videoVariants(tracks).size > 1
     return when {
-        canSwitch && !isVideoOverridden(player) -> listOfNotNull("Авто", current).joinToString(" · ")
+        canSwitch && !isVideoOverridden(player, tracks) -> listOfNotNull("Авто", current).joinToString(" · ")
         else -> current
     }
 }
