@@ -52,7 +52,8 @@ compose.desktop {
             // mpv и uosc кладутся рядом с программой (resources/windows → app/resources)
             appResourcesRootDir.set(project.layout.projectDirectory.dir("resources"))
             // jdk.httpserver — веб-интерфейс в стиле MPC-HC, который опрашивает Lampa
-            modules("java.net.http", "jdk.crypto.ec", "jdk.httpserver")
+            // jdk.localedata — русская локаль: названия языков дорожек («Русский») и запятая в «6,2 Мбит/с»
+            modules("java.net.http", "jdk.crypto.ec", "jdk.httpserver", "jdk.localedata")
             // «Открыть с помощью → Smart Player» для видеофайлов
             listOf(
                 "mkv" to "video/x-matroska", "mp4" to "video/mp4", "avi" to "video/x-msvideo", "m4v" to "video/x-m4v",
